@@ -89,6 +89,26 @@ class MainTests(unittest.TestCase):
         overcast.runner.shell_step(details, {})
         self.assertEquals(list(run_cmd_once.side_effect), [])
 
+    @mock.patch('overcast.runner.time')
+    @mock.patch('overcast.runner.run_cmd_once')
+    def test_shell_step_retries_if_failed_until_success_with_delay(self, run_cmd_once, time):
+        details = {'cmd': 'true',
+                   'retry-if-fails': True,
+                   'retry-delay': '5s'}
+
+        curtime = [0]
+        def sleep(s, curtime=curtime):
+            curtime[0] += s
+
+        time.time.side_effect = lambda:curtime[0]
+        time.sleep.side_effect = sleep
+
+        side_effects = [overcast.exceptions.CommandFailedException()]*2 + [True]
+        run_cmd_once.side_effect = side_effects
+        overcast.runner.shell_step(details, {})
+        self.assertEquals(list(run_cmd_once.side_effect), [])
+        self.assertEquals(curtime[0], 10)
+
     @mock.patch('overcast.runner.run_cmd_once')
     def test_shell_step_retries_if_timedout_until_success(self, run_cmd_once):
         details = {'cmd': 'true',

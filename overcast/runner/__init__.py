@@ -119,9 +119,17 @@ def shell_step(details, environment):
         overall_deadline = None
 
     if details.get('timeout', False):
-        individual_exec_limit = time.time() + utils.parse_time(details['timeout'])
+        individual_exec_limit = utils.parse_time(details['timeout'])
     else:
         individual_exec_limit = None
+
+    if details.get('retry-delay', False):
+        retry_delay = utils.parse_time(details['retry-delay'])
+    else:
+        retry_delay = 0
+
+    def wait():
+        time.sleep(retry_delay)
 
     # Four settings matter here:
     # retry-if-fails: True/False
@@ -144,11 +152,13 @@ def shell_step(details, environment):
             break
         except exceptions.CommandFailedException:
             if details.get('retry-if-fails', False):
+                wait()
                 continue
             raise
         except exceptions.CommandTimedOutException:
             if details.get('retry-if-fails', False):
-                if time.time() < deadline:
+                if time.time() + retry_delay < deadline:
+                    wait()
                     continue
             raise
 
