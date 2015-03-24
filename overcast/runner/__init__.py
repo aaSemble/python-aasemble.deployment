@@ -44,7 +44,6 @@ def find_weak_refs(stack):
 
     return images, flavors, networks-dynamic_networks
 
-
 def list_refs(args, stdout=sys.stdout):
     stack = load_yaml(args.stack)
     images, flavors, networks = find_weak_refs(stack)
@@ -80,7 +79,7 @@ def shell_step_cmd(details):
          return 'ssh -o StrictHostKeyChecking=no ubuntu@%s bash' % (node)
     else:
          return 'bash'
- 
+
 def run_cmd_once(shell_cmd, real_cmd, environment, deadline):
     proc = subprocess.Popen(shell_cmd,
                             env=environment,
@@ -100,28 +99,58 @@ def run_cmd_once(shell_cmd, real_cmd, environment, deadline):
                     stdin = ''
 
         if proc.poll() is not None:
-            if proc.returncode != 0:
-                if not deadline:
-                    raise exceptions.CommandFailedException(stdin)
-            else:
+            if proc.returncode == 0:
                 return True
+            else:
+                raise exceptions.CommandFailedException(stdin)
 
         if deadline and time.time() > deadline:
+            if proc.poll() is None:
+                proc.kill()
             raise exceptions.CommandTimedOutException(stdin)
 
 
 def shell_step(details, environment):
     cmd = shell_step_cmd(details)
-   
-    if details.get('retry-for', False):
-        deadline = time.time() + utils.parse_time(details['retry-for'])
+
+    if details.get('total-timeout', False):
+        overall_deadline = time.time() + utils.parse_time(details['total-timeout'])
     else:
-        deadline = None
+        overall_deadline = None
 
+    if details.get('timeout', False):
+        individual_exec_limit = time.time() + utils.parse_time(details['timeout'])
+    else:
+        individual_exec_limit = None
+
+    # Four settings matter here:
+    # retry-if-fails: True/False
+    # retry-delay: Time to wait between retries
+    # timeout: Max time per command execution
+    # total-timeout: How long time to spend on this in total
     while True: 
-        if run_cmd_once(cmd, details['cmd'], environment, deadline):
-            break
+        if individual_exec_limit:
+            deadline = time.time() + individual_exec_limit
+            if overall_deadline:
+                if deadline > overall_deadline:
+                    deadline = overall_deadline
+        elif overall_deadline:
+            deadline = overall_deadline
+        else:
+            deadline = None
 
+        try:
+            run_cmd_once(cmd, details['cmd'], environment, deadline)
+            break
+        except exceptions.CommandFailedException:
+            if details.get('retry-if-fails', False):
+                continue
+            raise
+        except exceptions.CommandTimedOutException:
+            if details.get('retry-if-fails', False):
+                if time.time() < deadline:
+                    continue
+            raise
 
 def deploy(args, stdout):
     cfg = load_yaml(args.cfg)

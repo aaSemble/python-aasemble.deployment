@@ -44,24 +44,85 @@ class MainTests(unittest.TestCase):
                            set(['bootstrap']),
                            set(['default'])))
 
-    def test_shell_step(self):
+    def test_run_cmd_once_simple(self):
+        overcast.runner.run_cmd_once(shell_cmd='bash',
+                                     real_cmd='true',
+                                     environment={},
+                                     deadline=None)
+
+    def test_run_cmd_once_fail(self):
+        self.assertRaises(overcast.exceptions.CommandFailedException,
+                          overcast.runner.run_cmd_once, shell_cmd='bash',
+                                                        real_cmd='false',
+                                                        environment={},
+                                                        deadline=None)
+
+    def test_run_cmd_once_with_deadline(self):
+        deadline = 10
+        with mock.patch('overcast.runner.time') as time_mock:
+            time_mock.time.return_value = 9
+            overcast.runner.run_cmd_once(shell_cmd='bash',
+                                         real_cmd='true',
+                                         environment={},
+                                         deadline=deadline)
+            time_mock.time.return_value = 11
+            self.assertRaises(overcast.exceptions.CommandTimedOutException,
+                              overcast.runner.run_cmd_once, shell_cmd='bash',
+                                                            real_cmd='true',
+                                                            environment={},
+                                                            deadline=deadline)
+
+
+    @mock.patch('overcast.runner.run_cmd_once')
+    def test_shell_step(self, run_cmd_once):
         details = {'cmd': 'true'}
         overcast.runner.shell_step(details, {})
+        run_cmd_once.assert_called_once_with(mock.ANY, 'true', mock.ANY, None)
 
-    def test_shell_step_timeout(self):
-        details = {'cmd': 'sleep 5',
-                   'retry-for': '1s'}
-        self.assertRaises(overcast.exceptions.CommandTimedOutException,
-                          overcast.runner.shell_step, details, {})
+    @mock.patch('overcast.runner.run_cmd_once')
+    def test_shell_step_retries_if_failed_until_success(self, run_cmd_once):
+        details = {'cmd': 'true',
+                   'retry-if-fails': True}
 
-    def test_shell_step_does_not_timeout(self):
-        details = {'cmd': 'sleep 1',
-                   'retry-for': '3s'}
+        side_effects = [overcast.exceptions.CommandFailedException()]*100 + [True]
+        run_cmd_once.side_effect = side_effects
         overcast.runner.shell_step(details, {})
+        self.assertEquals(list(run_cmd_once.side_effect), [])
 
-    def test_shell_step_retries(self):
-        details = {'cmd': 'sleep 1;exit 1',
-                   'retry-for': '3s'}
+    @mock.patch('overcast.runner.run_cmd_once')
+    def test_shell_step_retries_if_timedout_until_success(self, run_cmd_once):
+        details = {'cmd': 'true',
+                   'retry-if-fails': True,
+                   'timeout': '10s'}
 
+        side_effects = [overcast.exceptions.CommandTimedOutException()]*10 + [True]
+        run_cmd_once.side_effect = side_effects
+        overcast.runner.shell_step(details, {})
+        self.assertEquals(list(run_cmd_once.side_effect), [])
+
+
+    @mock.patch('overcast.runner.time')
+    @mock.patch('overcast.runner.run_cmd_once')
+    def test_shell_step_retries_if_timedout_until_total_timeout(self,
+                                                                run_cmd_once,
+                                                                time):
+        details = {'cmd': 'true',
+                   'retry-if-fails': True,
+                   'total-timeout': '10s'}
+
+        time.time.return_value = 10
+
+        side_effects = [overcast.exceptions.CommandTimedOutException()]*2
+        def side_effect(*args, **kwargs):
+            if len(side_effects) < 2:
+                time.time.return_value = 100
+
+            ret = side_effects.pop(0)
+            if isinstance(ret, Exception):
+                raise ret
+            return ret
+
+        run_cmd_once.side_effect = side_effect
         self.assertRaises(overcast.exceptions.CommandTimedOutException,
                           overcast.runner.shell_step, details, {})
+        self.assertEquals(side_effects, [])
