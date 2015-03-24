@@ -110,7 +110,7 @@ def run_cmd_once(shell_cmd, real_cmd, environment, deadline):
             raise exceptions.CommandTimedOutException(stdin)
 
 
-def shell_step(details, environment):
+def shell_step(details, environment=None):
     cmd = shell_step_cmd(details)
 
     if details.get('total-timeout', False):
@@ -162,12 +162,12 @@ def shell_step(details, environment):
                     continue
             raise
 
-def deploy(args, stdout):
+def deploy(args, stdout=sys.stdout):
     cfg = load_yaml(args.cfg)
-    for step in build_info[name]:
+    for step in cfg[args.name]:
         step_type = step.keys()[0]
         details = step[step_type]
-        func = locals()['%s_step' % step_type]
+        func = globals()['%s_step' % step_type]
         func(details)
 
 
@@ -186,6 +186,7 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
     deploy_parser.set_defaults(func=deploy)
     deploy_parser.add_argument('--cfg', default='.overcast.yaml',
                                help='Deployment config file')
+    deploy_parser.add_argument('name', help='Deployment to perform')
 
     args = parser.parse_args(argv)
 
