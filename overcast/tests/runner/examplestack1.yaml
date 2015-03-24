@@ -1,0 +1,18 @@
+nodes:
+  bootstrap:
+    number: 1
+    flavor: bootstrap
+    image: trusty
+    nics:
+    - network: default
+      securitygroups:
+      - jumphost
+    - network: undercloud
+networks:
+  undercloud:
+    cidr: 10.240.292.0/24
+securitygroups:
+  jumphost:
+  - cidr: 0.0.0.0/0
+    from_port: 22
+    to_port: 22
