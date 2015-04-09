@@ -1,0 +1,6 @@
+main:
+  - shell:
+      cmd: "echo Hello, world"
+  - provision:
+      stack: teststack.yaml
+      userdata: userdata.txt
