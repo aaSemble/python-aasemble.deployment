@@ -250,7 +250,7 @@ class MainTests(unittest.TestCase):
                                                       'source_type': 'image',
                                                       'destination_type': 'volume',
                                                       'delete_on_termination': 'true'}],
-                                             image='trustyimageobject',
+                                             image=None,
                                              userdata='foo',
                                              key_name='x123_key',
                                              flavor='smallflavorobject')
