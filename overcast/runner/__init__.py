@@ -218,6 +218,34 @@ def get_neutron_client(conncache=conncache):
         conncache['neutron'] = neutronclient.Client('2.0', session=ks)
     return conncache['neutron']
 
+def delete_port(uuid):
+    nc = get_neutron_client()
+    nc.delete_port(uuid)
+
+def delete_network(uuid):
+    nc = get_neutron_client()
+    nc.delete_network(uuid)
+
+def delete_subnet(uuid):
+    nc = get_neutron_client()
+    nc.delete_subnet(uuid)
+
+def delete_secgroup(uuid):
+    nc = get_neutron_client()
+    nc.delete_security_group(uuid)
+
+def delete_secgroup_rule(uuid):
+    nc = get_neutron_client()
+    nc.delete_security_group_rule(uuid)
+
+def delete_keypair(name):
+    nc = get_nova_client()
+    nc.keypairs.delete(name)
+
+def delete_server(uuid):
+    nc = get_nova_client()
+    nc.servers.delete(uuid)
+
 def create_port(name, network, secgroups):
     nc = get_neutron_client()
     port = {'name': name,
@@ -233,23 +261,26 @@ def create_keypair(name, path):
         key = fp.read()
     nc.keypairs.create(name, key)
 
-def create_network(name, info):
+def create_network(name, info, record_resource):
     nc = get_neutron_client()
     network = {'name': name, 'admin_state_up': True}
     network = nc.create_network({'network': network})
+    record_resource('network', network['network']['id'])
 
     subnet = {"network_id": network['network']['id'],
               "ip_version": 4,
               "cidr": info['cidr'],
               "name": name}
     subnet = nc.create_subnet({'subnet': subnet})
+    record_resource('subnet', subnet['subnet']['id'])
+
     return network['network']['id']
 
-def create_security_group(name, info):
+def create_security_group(name, info, record_resource):
     nc = get_neutron_client()
     secgroup = {'name': name}
     secgroup = nc.create_security_group({'security_group': secgroup})
-
+    record_resource('secgroup', secgroup['security_group']['id'])
 
     for rule in (info or []):
         secgroup_rule = {"direction": "ingress",
@@ -259,10 +290,12 @@ def create_security_group(name, info):
                          "port_range_max": rule['to_port'],
                          "protocol": rule['protocol'],
                          "security_group_id": secgroup['security_group']['id']}
-        nc.create_security_group_rule({'security_group_rule': secgroup_rule})
+        secgroup_rule = nc.create_security_group_rule({'security_group_rule': secgroup_rule})
+        record_resource('secgroup_rule', secgroup_rule['security_group_rule']['id'])
     return secgroup['security_group']['id']
 
-def create_node(name, info, networks, secgroups, mappings, keypair, userdata):
+def create_node(name, info, networks, secgroups,
+                mappings, keypair, userdata, record_resource):
     nc = get_nova_client()
 
 #    import ipdb;ipdb.set_trace()
@@ -291,6 +324,7 @@ def create_node(name, info, networks, secgroups, mappings, keypair, userdata):
        port_id = create_port(port_name, _map_network(network['network']),
                              [secgroups[secgroup] for secgroup in network.get('secgroups', [])])
        nics.append({'port-id': port_id})
+       record_resource('port', port_id)
 
     bdm = [{'source_type': 'image',
             'uuid': info['image'],
@@ -302,6 +336,7 @@ def create_node(name, info, networks, secgroups, mappings, keypair, userdata):
                                block_device_mapping_v2=bdm,
                                flavor=flavor, nics=nics,
                                key_name=keypair, userdata=userdata)
+    record_resource('server', server.id)
     return server.id
 
 def provision_step(details, args, mappings):
@@ -316,9 +351,18 @@ def provision_step(details, args, mappings):
         else:
             return s
 
+    if args.cleanup:
+        cleanup = open(args.cleanup, 'a+')
+        def record_resource(typ, id):
+            cleanup.write('%s: %s\n' % (typ, id))
+    else:
+        def record_resource(typ, id):
+            pass
+
     if args.key:
         keypair_name = _add_prefix('pubkey')
         create_keypair(keypair_name, args.key)
+        record_resource('keypair', keypair_name)
     else:
         keypair_name = None
 
@@ -330,12 +374,15 @@ def provision_step(details, args, mappings):
 
     for base_network_name, network_info in stack['networks'].items():
         network_name = _add_prefix(base_network_name)
-        networks[base_network_name] = create_network(network_name, network_info)
+        networks[base_network_name] = create_network(network_name,
+                                                     network_info,
+                                                     record_resource)
 
     for base_secgroup_name, secgroup_info in stack['securitygroups'].items():
         secgroup_name = _add_prefix(base_secgroup_name)
         secgroups[base_secgroup_name] = create_security_group(secgroup_name,
-                                                              secgroup_info)
+                                                              secgroup_info,
+                                                              record_resource)
 
     for base_node_name, node_info in stack['nodes'].items():
         node_name = _add_prefix(base_node_name)
@@ -344,7 +391,8 @@ def provision_step(details, args, mappings):
                                             secgroups=secgroups,
                                             mappings=mappings,
                                             keypair=keypair_name,
-                                            userdata=userdata)
+                                            userdata=userdata,
+                                            record_resource=record_resource)
 
 
 def deploy(args, stdout=sys.stdout):
@@ -360,6 +408,19 @@ def deploy(args, stdout=sys.stdout):
         details = step[step_type]
         func = globals()['%s_step' % step_type]
         func(details, args=args, mappings=mappings)
+
+def cleanup(args, stdout=sys.stdout):
+    with open(args.log, 'r') as fp:
+        lines = [l.strip() for l in fp]
+
+    lines.reverse()
+    for l in lines:
+        resource_type, uuid = l.split(': ')
+        func = globals()['delete_%s' % resource_type]
+        try:
+            func(uuid)
+        except:
+            pass
 
 
 def main(argv=sys.argv[1:], stdout=sys.stdout):
@@ -380,7 +441,12 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
     deploy_parser.add_argument('--prefix', help='Resource name prefix')
     deploy_parser.add_argument('--mappings', help='Resource map file')
     deploy_parser.add_argument('--key', help='Public key file')
+    deploy_parser.add_argument('--cleanup', help='Cleanup file')
     deploy_parser.add_argument('name', help='Deployment to perform')
+
+    cleanup_parser = subparsers.add_parser('cleanup', help='Clean up')
+    cleanup_parser.set_defaults(func=cleanup)
+    cleanup_parser.add_argument('log', help='Clean up log (generated by deploy)')
 
     args = parser.parse_args(argv)
 

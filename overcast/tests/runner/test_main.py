@@ -176,8 +176,10 @@ class MainTests(unittest.TestCase):
     def test_create_network(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.create_network.return_value = {'network': {'id': 'theuuid'}}
+        nc.create_subnet.return_value = {'subnet': {'id': 'thesubnetuuid'}}
 
-        overcast.runner.create_network('netname', {'cidr': '10.0.0.0/12'})
+        record_resource = mock.MagicMock()
+        overcast.runner.create_network('netname', {'cidr': '10.0.0.0/12'}, record_resource)
 
         nc.create_network.assert_called_once_with({'network': {'name': 'netname',
                                                                'admin_state_up': True}})
@@ -185,16 +187,21 @@ class MainTests(unittest.TestCase):
                                                              'cidr': '10.0.0.0/12',
                                                              'ip_version': 4,
                                                              'network_id': 'theuuid'}})
+        record_resource.assert_any_call('network', 'theuuid')
+        record_resource.assert_any_call('subnet', 'thesubnetuuid')
 
     @mock.patch('overcast.runner.get_neutron_client')
     def test_create_security_group(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.create_security_group.return_value = {'security_group': {'id': 'theuuid'}}
+        nc.create_security_group_rule.return_value = {'security_group_rule': {'id': 'theruleuuid'}}
 
+        record_resource = mock.MagicMock()
         overcast.runner.create_security_group('secgroupname', [{'cidr': '12.0.0.0/12',
                                                                 'protocol': 'tcp',
                                                                 'from_port': 21,
-                                                                'to_port': 22}])
+                                                                'to_port': 22}],
+                                              record_resource)
 
         nc.create_security_group.assert_called_once_with({'security_group': {'name': 'secgroupname'}})
         nc.create_security_group_rule.assert_called_once_with({'security_group_rule': {'remote_ip_prefix': '12.0.0.0/12',
@@ -204,22 +211,28 @@ class MainTests(unittest.TestCase):
                                                                                        'port_range_max': 22,
                                                                                        'protocol': 'tcp',
                                                                                        'security_group_id': 'theuuid'}})
+        record_resource.assert_any_call('secgroup', 'theuuid')
+        record_resource.assert_any_call('secgroup_rule', 'theruleuuid')
 
     @mock.patch('overcast.runner.get_neutron_client')
     def test_create_security_group_without_rules(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.create_security_group.return_value = {'security_group': {'id': 'theuuid'}}
 
-        overcast.runner.create_security_group('secgroupname', None)
+        record_resource = mock.MagicMock()
+
+        overcast.runner.create_security_group('secgroupname', None, record_resource)
         nc.create_security_group.assert_called_once_with({'security_group': {'name': 'secgroupname'}})
 
     @mock.patch('overcast.runner.create_port')
     @mock.patch('overcast.runner.get_nova_client')
     def test_create_node(self, get_nova_client, create_port):
         nc = get_nova_client.return_value
+        record_resource = mock.MagicMock()
 
         nc.flavors.get.return_value = 'smallflavorobject'
         nc.images.get.return_value = 'trustyimageobject'
+        nc.servers.create.return_value.id = 'serveruuid'
 
         def _create_port(name, network, secgroups):
             return {'yes,mapped': 'nicuuid1',
@@ -242,6 +255,7 @@ class MainTests(unittest.TestCase):
                                               'flavors': {'small': 'smallid'}},
                                     userdata='foo',
                                     keypair='x123_key',
+                                    record_resource=record_resource
                                     )
 
         nc.flavors.get.assert_called_with('smallid')
@@ -262,6 +276,11 @@ class MainTests(unittest.TestCase):
                                              userdata='foo',
                                              key_name='x123_key',
                                              flavor='smallflavorobject')
+
+        record_resource.assert_any_call('port', 'nicuuid1')
+        record_resource.assert_any_call('port', 'nicuuid2')
+        record_resource.assert_any_call('port', 'nicuuid3')
+        record_resource.assert_any_call('server', 'serveruuid')
 
     def test_list_refs_human(self):
         self._test_list_refs(False, 'Images:\n  trusty\n\nFlavors:\n  bootstrap\n')
