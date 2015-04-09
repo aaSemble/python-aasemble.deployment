@@ -27,6 +27,16 @@ foo:
       wibble: []
 '''
 
+mappings_data = '''[images]
+trusty = 7cd9416f-9167-4371-a04a-a7939c5372ab
+
+[networks]
+common = b2b2f6a6-228f-4d42-b4f7-0d340b3390e7
+
+[flavors]
+small = 34fb3740-d158-472c-8520-017278c75008
+'''
+
 class MainTests(unittest.TestCase):
     def test_load_yaml(self):
         with mock.patch('__builtin__.open') as m:
@@ -34,6 +44,15 @@ class MainTests(unittest.TestCase):
             self.assertEquals(overcast.runner.load_yaml(),
                               {'foo': ['bar', {'baz': {'wibble': []}}]})
             m.assert_called_once_with('.overcast.yaml', 'r')
+
+    def test_load_mappings(self):
+        with mock.patch('__builtin__.open') as m:
+            m.return_value.__enter__.return_value = StringIO(mappings_data)
+            self.assertEquals(overcast.runner.load_mappings(),
+                              {'flavors': {'small': '34fb3740-d158-472c-8520-017278c75008'},
+                               'images': {'trusty': '7cd9416f-9167-4371-a04a-a7939c5372ab'},
+                               'networks': {'common': 'b2b2f6a6-228f-4d42-b4f7-0d340b3390e7'}})
+            m.assert_called_once_with('.overcast.mappings.ini', 'r')
 
     def test_find_weak_refs(self):
         example_file = os.path.join(os.path.dirname(__file__),
@@ -78,6 +97,12 @@ class MainTests(unittest.TestCase):
         details = {'cmd': 'true'}
         overcast.runner.shell_step(details, {})
         run_cmd_once.assert_called_once_with(mock.ANY, 'true', mock.ANY, None)
+
+    @mock.patch('overcast.runner.run_cmd_once')
+    def test_shell_step_failure(self, run_cmd_once):
+        details = {'cmd': 'false'}
+        overcast.runner.shell_step(details, {})
+        run_cmd_once.assert_called_once_with(mock.ANY, 'false', mock.ANY, None)
 
     @mock.patch('overcast.runner.run_cmd_once')
     def test_shell_step_retries_if_failed_until_success(self, run_cmd_once):
@@ -146,3 +171,105 @@ class MainTests(unittest.TestCase):
         self.assertRaises(overcast.exceptions.CommandTimedOutException,
                           overcast.runner.shell_step, details, {})
         self.assertEquals(side_effects, [])
+
+    @mock.patch('overcast.runner.get_neutron_client')
+    def test_create_network(self, get_neutron_client):
+        nc = get_neutron_client.return_value
+        nc.create_network.return_value = {'network': {'id': 'theuuid'}}
+
+        overcast.runner.create_network('netname', {'cidr': '10.0.0.0/12'})
+
+        nc.create_network.assert_called_once_with({'network': {'name': 'netname',
+                                                               'admin_state_up': True}})
+        nc.create_subnet.assert_called_once_with({'subnet': {'name': 'netname',
+                                                             'cidr': '10.0.0.0/12',
+                                                             'ip_version': 4,
+                                                             'network_id': 'theuuid'}})
+
+    @mock.patch('overcast.runner.get_neutron_client')
+    def test_create_security_group(self, get_neutron_client):
+        nc = get_neutron_client.return_value
+        nc.create_security_group.return_value = {'security_group': {'id': 'theuuid'}}
+
+        overcast.runner.create_security_group('secgroupname', [{'cidr': '12.0.0.0/12',
+                                                                'protocol': 'tcp',
+                                                                'from_port': 21,
+                                                                'to_port': 22}])
+
+        nc.create_security_group.assert_called_once_with({'security_group': {'name': 'secgroupname'}})
+        nc.create_security_group_rule.assert_called_once_with({'security_group_rule': {'remote_ip_prefix': '12.0.0.0/12',
+                                                                                       'direction': 'ingress',
+                                                                                       'ethertype': 'IPv4',
+                                                                                       'port_range_min': 21,
+                                                                                       'port_range_max': 22,
+                                                                                       'protocol': 'tcp',
+                                                                                       'security_group_id': 'theuuid'}})
+
+    @mock.patch('overcast.runner.create_port')
+    @mock.patch('overcast.runner.get_nova_client')
+    def test_create_node(self, get_nova_client, create_port):
+        nc = get_nova_client.return_value
+
+        nc.flavors.get.return_value = 'smallflavorobject'
+        nc.images.get.return_value = 'trustyimageobject'
+
+        def _create_port(name, network, secgroups):
+            return {'yes,mapped': 'nicuuid1',
+                    'theoneIjustcreated': 'nicuuid2',
+                    'passedthrough': 'nicuuid3'}[network]
+
+        create_port.side_effect = _create_port
+
+        overcast.runner.create_node('x123_test1',
+                                    {'image': 'trusty',
+                                     'flavor': 'small',
+                                     'disk': 10,
+                                     'networks': [{'network': 'mapped'},
+                                                  {'network': 'ephemeral'},
+                                                  {'network': 'passedthrough'}]},
+                                    networks={'ephemeral': 'theoneIjustcreated'},
+                                    secgroups={},
+                                    mappings={'networks': {'mapped': 'yes,mapped'},
+                                              'images': {'trusty': 'trustyuuid'},
+                                              'flavors': {'small': 'smallid'}},
+                                    userdata='foo',
+                                    keypair='x123_key',
+                                    )
+
+        nc.flavors.get.assert_called_with('smallid')
+        nc.images.get.assert_called_with('trustyuuid')
+
+        nc.servers.create.assert_called_with('x123_test1',
+                                             nics=[{'port-id': 'nicuuid1'},
+                                                   {'port-id': 'nicuuid2'},
+                                                   {'port-id': 'nicuuid3'}],
+                                             block_device_mapping_v2=[
+                                                     {'boot_index': '0',
+                                                      'uuid': 'trustyuuid',
+                                                      'volume_size': 10,
+                                                      'source_type': 'image',
+                                                      'destination_type': 'volume',
+                                                      'delete_on_termination': 'true'}],
+                                             image='trustyimageobject',
+                                             userdata='foo',
+                                             key_name='x123_key',
+                                             flavor='smallflavorobject')
+
+    def test_list_refs_human(self):
+        self._test_list_refs(False, 'Images:\n  trusty\n\nFlavors:\n  bootstrap\n')
+
+    def test_list_refs_cfg_tmpl(self):
+        self._test_list_refs(True, '[images]\ntrusty = <missing value>\n\n[flavors]\nbootstrap = <missing value>\n\n')
+
+    def _test_list_refs(self, tmpl, expected_value):
+        example_file = os.path.join(os.path.dirname(__file__),
+                                    'examplestack1.yaml')
+        class Args(object):
+            pass
+
+        args = Args()
+        args.stack = example_file
+        args.tmpl = tmpl
+        output = StringIO()
+        overcast.runner.list_refs(args, output)
+        self.assertEquals(output.getvalue(), expected_value)

@@ -25,5 +25,6 @@ setup(
     zip_safe=False,
     install_requires=['pyYAML'],
     tests_require=['mock', 'nose'],
-    test_suite='nose.collector'
+    test_suite='nose.collector',
+    entry_points={'console_scripts': ['overcast=overcast.runner:main']}
 )
