@@ -1,4 +1,4 @@
-= Overcast Deployment Engine =
+# Overcast Deployment Engine
 
 This is the Overcast Deployment Engine. It's a cloud centric deployment engine
 that aims to facilitate deployment for both ephemeral environments (for
