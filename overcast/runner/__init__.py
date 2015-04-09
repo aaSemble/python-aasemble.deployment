@@ -251,7 +251,7 @@ def create_security_group(name, info):
     secgroup = nc.create_security_group({'security_group': secgroup})
 
 
-    for rule in info:
+    for rule in (info or []):
         secgroup_rule = {"direction": "ingress",
                          "remote_ip_prefix": rule['cidr'],
                          "ethertype": "IPv4",

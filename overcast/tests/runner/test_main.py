@@ -205,6 +205,14 @@ class MainTests(unittest.TestCase):
                                                                                        'protocol': 'tcp',
                                                                                        'security_group_id': 'theuuid'}})
 
+    @mock.patch('overcast.runner.get_neutron_client')
+    def test_create_security_group_without_rules(self, get_neutron_client):
+        nc = get_neutron_client.return_value
+        nc.create_security_group.return_value = {'security_group': {'id': 'theuuid'}}
+
+        overcast.runner.create_security_group('secgroupname', None)
+        nc.create_security_group.assert_called_once_with({'security_group': {'name': 'secgroupname'}})
+
     @mock.patch('overcast.runner.create_port')
     @mock.patch('overcast.runner.get_nova_client')
     def test_create_node(self, get_nova_client, create_port):
