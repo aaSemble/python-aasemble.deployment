@@ -1,5 +1,7 @@
 # Overcast Deployment Engine
 
+![Travis status](https://travis-ci.org/overcastde/python-overcast.svg)
+
 This is the Overcast Deployment Engine. It's a cloud centric deployment engine
 that aims to facilitate deployment for both ephemeral environments (for
 integration testing) as well for long-lived environments. Support for the
