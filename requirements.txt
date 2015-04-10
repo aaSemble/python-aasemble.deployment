@@ -1,0 +1,5 @@
+python-novaclient
+python-keystoneclient
+python-neutronclient
+pyYAML
+mock
