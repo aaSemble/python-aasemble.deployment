@@ -24,12 +24,6 @@ import sys
 import time
 import yaml
 
-import novaclient.client as novaclient
-import neutronclient.neutron.client as neutronclient
-from keystoneclient import session as keystone_session
-from keystoneclient.v2_0 import client as keystone_client
-from keystoneclient.auth.identity import v2 as keystone_auth_id_v2
-
 from overcast import utils
 from overcast import exceptions
 
@@ -194,24 +188,29 @@ def get_creds_from_env():
 
 conncache = {}
 def get_keystone_session(conncache=conncache):
+    from keystoneclient import session as keystone_session
+    from keystoneclient.auth.identity import v2 as keystone_auth_id_v2
     if 'keystone_session' not in conncache:
         conncache['keystone_auth'] = keystone_auth_id_v2.Password(**get_creds_from_env())
         conncache['keystone_session'] = keystone_session.Session(auth=conncache['keystone_auth'])
     return conncache['keystone_session']
 
 def get_keystone_client(conncache=conncache):
+    from keystoneclient.v2_0 import client as keystone_client
     if 'keystone' not in conncache:
         ks = get_keystone_session()
         conncache['keystone'] = keystone_client.Client(session=ks)
     return conncache['keystone']
 
 def get_nova_client(conncache=conncache):
+    import novaclient.client as novaclient
     if 'nova' not in conncache:
         ks = get_keystone_session()
         conncache['nova'] = novaclient.Client("1.1", session=ks)
     return conncache['nova']
 
 def get_neutron_client(conncache=conncache):
+    import neutronclient.neutron.client as neutronclient
 #    logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
     if 'neutron' not in conncache:
         ks = get_keystone_session()
