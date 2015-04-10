@@ -297,7 +297,6 @@ def create_node(name, info, networks, secgroups,
                 mappings, keypair, userdata, record_resource):
     nc = get_nova_client()
 
-#    import ipdb;ipdb.set_trace()
     if info['image'] in mappings.get('images', {}):
         info['image'] = mappings['images'][info['image']]
 
@@ -384,14 +383,22 @@ def provision_step(details, args, mappings):
                                                               record_resource)
 
     for base_node_name, node_info in stack['nodes'].items():
-        node_name = _add_prefix(base_node_name)
-        nodes[base_node_name] = create_node(node_name, node_info,
-                                            networks=networks,
-                                            secgroups=secgroups,
-                                            mappings=mappings,
-                                            keypair=keypair_name,
-                                            userdata=userdata,
-                                            record_resource=record_resource)
+        def _create_node(base_name):
+            node_name = _add_prefix(base_name)
+            nodes[base_name] = create_node(node_name, node_info,
+                                           networks=networks,
+                                           secgroups=secgroups,
+                                           mappings=mappings,
+                                           keypair=keypair_name,
+                                           userdata=userdata,
+                                           record_resource=record_resource)
+
+        if 'number' in node_info:
+            count = node_info.pop('number')
+            for idx in range(1, count+1):
+                _create_node('%s%d' % (base_node_name, idx))
+        else:
+            _create_node(base_node_name)
 
 
 def deploy(args, stdout=sys.stdout):

@@ -288,15 +288,69 @@ class MainTests(unittest.TestCase):
     def test_list_refs_cfg_tmpl(self):
         self._test_list_refs(True, '[images]\ntrusty = <missing value>\n\n[flavors]\nbootstrap = <missing value>\n\n')
 
-    def _test_list_refs(self, tmpl, expected_value):
+    def _test_list_refs(self, tmpl_, expected_value):
         example_file = os.path.join(os.path.dirname(__file__),
                                     'examplestack1.yaml')
         class Args(object):
-            pass
+            stack = example_file
+            tmpl = tmpl_
 
         args = Args()
-        args.stack = example_file
-        args.tmpl = tmpl
         output = StringIO()
         overcast.runner.list_refs(args, output)
         self.assertEquals(output.getvalue(), expected_value)
+
+
+    @mock.patch('overcast.runner.create_network')
+    @mock.patch('overcast.runner.create_security_group')
+    @mock.patch('overcast.runner.create_node')
+    def test_provision_step(self, create_node, create_security_group, create_network):
+        create_network.return_value = 'netuuid'
+        create_security_group.return_value = 'sguuid'
+        class Args(object):
+            cleanup = None
+            key = None
+            prefix = 'x123'
+
+        args = Args()
+        overcast.runner.provision_step({'stack': 'overcast/tests/runner/examplestack1.yaml'}, args, {})
+
+        create_network.assert_called_with('x123_undercloud', {'cidr': '10.240.292.0/24'}, mock.ANY)
+        create_security_group.assert_called_with('x123_jumphost',
+                                                 [{'to_port': 22,
+                                                   'cidr': '0.0.0.0/0',
+                                                   'from_port': 22}], mock.ANY)
+        print create_node.mock_calls
+        create_node.assert_any_call('x123_other',
+                                    {'nics': [{'securitygroups': ['jumphost'], 'network': 'default'},
+                                              {'network': 'undercloud'}],
+                                     'flavor': 'bootstrap',
+                                     'image': 'trusty'},
+                                    userdata=None,
+                                    mappings={},
+                                    secgroups={'jumphost': 'sguuid'},
+                                    record_resource=mock.ANY,
+                                    keypair=None,
+                                    networks={'undercloud': 'netuuid'})
+        create_node.assert_any_call('x123_bootstrap1',
+                                    {'nics': [{'securitygroups': ['jumphost'], 'network': 'default'},
+                                              {'network': 'undercloud'}],
+                                     'flavor': 'bootstrap',
+                                     'image': 'trusty'},
+                                    userdata=None,
+                                    mappings={},
+                                    secgroups={'jumphost': 'sguuid'},
+                                    record_resource=mock.ANY,
+                                    keypair=None,
+                                    networks={'undercloud': 'netuuid'})
+        create_node.assert_any_call('x123_bootstrap2',
+                                    {'nics': [{'securitygroups': ['jumphost'], 'network': 'default'},
+                                              {'network': 'undercloud'}],
+                                     'flavor': 'bootstrap',
+                                     'image': 'trusty'},
+                                    userdata=None,
+                                    mappings={},
+                                    secgroups={'jumphost': 'sguuid'},
+                                    record_resource=mock.ANY,
+                                    keypair=None,
+                                    networks={'undercloud': 'netuuid'})
