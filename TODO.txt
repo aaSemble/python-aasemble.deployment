@@ -1,4 +1,3 @@
-- Make remote commands connect to the nodes we've built.
 - Export ALL_NODES environment to commands after provision steps
 - Support long-lived deployments
   - Don't create resources that already exist (what if they don't match the config?)

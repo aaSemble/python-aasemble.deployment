@@ -87,13 +87,6 @@ def list_refs(args, stdout=sys.stdout):
 
         stdout.write('\n')
 
-def shell_step_cmd(details):
-    if details.get('type', None) == 'remote':
-         node = self.nodes[details['node']]
-         return 'ssh -o StrictHostKeyChecking=no ubuntu@%s bash' % (node)
-    else:
-         return 'bash'
-
 def run_cmd_once(shell_cmd, real_cmd, environment, deadline):
     proc = subprocess.Popen(shell_cmd,
                             env=environment,
@@ -137,6 +130,9 @@ def get_creds_from_env():
 class DeploymentRunner(object):
     def __init__(self):
         self.conncache = {}
+        self.networks = {}
+        self.secgroups = {}
+        self.nodes = {}
 
     def get_keystone_session(self):
         from keystoneclient import session as keystone_session
@@ -225,7 +221,8 @@ class DeploymentRunner(object):
         floatingip = {'floating_network_id': floating_network}
         floatingip = nc.create_floatingip({'floatingip': floatingip})
         record_resource('floatingip', floatingip['floatingip']['id'])
-        return floatingip['floatingip']['id']
+        return (floatingip['floatingip']['id'],
+                floatingip['floatingip']['floating_ip_address'])
 
     def associate_floating_ip(self, port_id, fip_id):
         nc = self.get_neutron_client()
@@ -264,8 +261,8 @@ class DeploymentRunner(object):
             record_resource('secgroup_rule', secgroup_rule['security_group_rule']['id'])
         return secgroup['security_group']['id']
 
-    def create_node(self, name, info, networks, secgroups,
-                    mappings, keypair, userdata, record_resource):
+    def create_node(self, name, info, mappings, keypair,
+                    userdata, record_resource):
         nc = self.get_nova_client()
 
         if info['image'] in mappings.get('images', {}):
@@ -280,8 +277,8 @@ class DeploymentRunner(object):
         def _map_network(network):
             if network in mappings.get('networks', {}):
                 netid = mappings['networks'][network]
-            elif network in networks:
-                netid = networks[network]
+            elif network in self.networks:
+                netid = self.networks[network]
             else:
                 netid = network
 
@@ -291,12 +288,14 @@ class DeploymentRunner(object):
         for eth_idx, network in enumerate(info['networks']):
            port_name = '%s_eth%d' % (name, eth_idx)
            port_id = self.create_port(port_name, _map_network(network['network']),
-                                      [secgroups[secgroup] for secgroup in network.get('secgroups', [])])
+                                      [self.secgroups[secgroup] for secgroup in network.get('secgroups', [])])
            record_resource('port', port_id)
 
            if network.get('assign_floating_ip', False):
-               fip_id = self.create_floating_ip(record_resource)
+               fip_id, fip_address = self.create_floating_ip(record_resource)
                self.associate_floating_ip(port_id, fip_id)
+           else:
+               fip_address = None
 
            nics.append({'port-id': port_id})
 
@@ -311,10 +310,10 @@ class DeploymentRunner(object):
                                    flavor=flavor, nics=nics,
                                    key_name=keypair, userdata=userdata)
         record_resource('server', server.id)
-        return server.id
+        return server.id, fip_address
 
     def shell_step(self, details, environment=None, args=None, mappings=None):
-        cmd = shell_step_cmd(details)
+        cmd = self.shell_step_cmd(details)
 
         if details.get('total-timeout', False):
             overall_deadline = time.time() + utils.parse_time(details['total-timeout'])
@@ -365,11 +364,15 @@ class DeploymentRunner(object):
                         continue
                 raise
 
+    def shell_step_cmd(self, details):
+        if details.get('type', None) == 'remote':
+             node = self.nodes[details['node']][1]
+             return 'ssh -o StrictHostKeyChecking=no ubuntu@%s bash' % (node)
+        else:
+             return 'bash'
+
     def provision_step(self, details, args, mappings):
         stack = load_yaml(details['stack'])
-        networks = {}
-        secgroups = {}
-        nodes = {}
 
         def _add_prefix(s):
             if args.prefix:
@@ -379,10 +382,10 @@ class DeploymentRunner(object):
 
         if args.cleanup:
             cleanup = open(args.cleanup, 'a+')
-            def record_resource(typ, id):
-                cleanup.write('%s: %s\n' % (typ, id))
+            def record_resource(type_, id):
+                cleanup.write('%s: %s\n' % (type_, id))
         else:
-            def record_resource(typ, id):
+            def record_resource(type_, id):
                 pass
 
         if args.key:
@@ -400,26 +403,24 @@ class DeploymentRunner(object):
 
         for base_network_name, network_info in stack['networks'].items():
             network_name = _add_prefix(base_network_name)
-            networks[base_network_name] = self.create_network(network_name,
-                                                              network_info,
-                                                              record_resource)
+            self.networks[base_network_name] = self.create_network(network_name,
+                                                                   network_info,
+                                                                   record_resource)
 
         for base_secgroup_name, secgroup_info in stack['securitygroups'].items():
             secgroup_name = _add_prefix(base_secgroup_name)
-            secgroups[base_secgroup_name] = self.create_security_group(secgroup_name,
-                                                                       secgroup_info,
-                                                                       record_resource)
+            self.secgroups[base_secgroup_name] = self.create_security_group(secgroup_name,
+                                                                            secgroup_info,
+                                                                            record_resource)
 
         for base_node_name, node_info in stack['nodes'].items():
             def _create_node(base_name):
                 node_name = _add_prefix(base_name)
-                nodes[base_name] = self.create_node(node_name, node_info,
-                                                    networks=networks,
-                                                    secgroups=secgroups,
-                                                    mappings=mappings,
-                                                    keypair=keypair_name,
-                                                    userdata=userdata,
-                                                    record_resource=record_resource)
+                self.nodes[base_name] = self.create_node(node_name, node_info,
+                                                         mappings=mappings,
+                                                         keypair=keypair_name,
+                                                         userdata=userdata,
+                                                         record_resource=record_resource)
 
             if 'number' in node_info:
                 count = node_info.pop('number')

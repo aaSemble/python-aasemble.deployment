@@ -189,13 +189,14 @@ class MainTests(unittest.TestCase):
     @mock.patch('overcast.runner.DeploymentRunner.find_floating_network')
     def test_create_floating_ip(self, find_floating_network, get_neutron_client):
         nc = get_neutron_client.return_value
-    
+
         find_floating_network.return_value = 'netuuid'
 
-        nc.create_floatingip.return_value = {'floatingip': {'id': 'theuuid'}}
+        nc.create_floatingip.return_value = {'floatingip': {'id': 'theuuid',
+                                                            'floating_ip_address': '1.2.3.4'}}
 
         record_resource = mock.MagicMock()
-        self.assertEquals(self.dr.create_floating_ip(record_resource), 'theuuid')
+        self.assertEquals(self.dr.create_floating_ip(record_resource), ('theuuid', '1.2.3.4'))
 
         nc.create_floatingip.assert_called_once_with({'floatingip': {'floating_network_id': 'netuuid'}})
 
@@ -269,6 +270,8 @@ class MainTests(unittest.TestCase):
 
         create_port.side_effect = _create_port
 
+        self.dr.networks = {'ephemeral': 'theoneIjustcreated'}
+        self.dr.secgroups = {}
         self.dr.create_node('x123_test1',
                                     {'image': 'trusty',
                                      'flavor': 'small',
@@ -276,8 +279,6 @@ class MainTests(unittest.TestCase):
                                      'networks': [{'network': 'mapped'},
                                                   {'network': 'ephemeral', 'assign_floating_ip': True},
                                                   {'network': 'passedthrough'}]},
-                                    networks={'ephemeral': 'theoneIjustcreated'},
-                                    secgroups={},
                                     mappings={'networks': {'mapped': 'yes,mapped'},
                                               'images': {'trusty': 'trustyuuid'},
                                               'flavors': {'small': 'smallid'}},
@@ -357,10 +358,8 @@ class MainTests(unittest.TestCase):
                                      'image': 'trusty'},
                                     userdata=None,
                                     mappings={},
-                                    secgroups={'jumphost': 'sguuid'},
                                     record_resource=mock.ANY,
-                                    keypair=None,
-                                    networks={'undercloud': 'netuuid'})
+                                    keypair=None)
         create_node.assert_any_call('x123_bootstrap1',
                                     {'nics': [{'securitygroups': ['jumphost'], 'network': 'default'},
                                               {'network': 'undercloud'}],
@@ -368,10 +367,8 @@ class MainTests(unittest.TestCase):
                                      'image': 'trusty'},
                                     userdata=None,
                                     mappings={},
-                                    secgroups={'jumphost': 'sguuid'},
                                     record_resource=mock.ANY,
-                                    keypair=None,
-                                    networks={'undercloud': 'netuuid'})
+                                    keypair=None)
         create_node.assert_any_call('x123_bootstrap2',
                                     {'nics': [{'securitygroups': ['jumphost'], 'network': 'default'},
                                               {'network': 'undercloud'}],
@@ -379,7 +376,5 @@ class MainTests(unittest.TestCase):
                                      'image': 'trusty'},
                                     userdata=None,
                                     mappings={},
-                                    secgroups={'jumphost': 'sguuid'},
                                     record_resource=mock.ANY,
-                                    keypair=None,
-                                    networks={'undercloud': 'netuuid'})
+                                    keypair=None)
