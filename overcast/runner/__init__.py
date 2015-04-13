@@ -237,6 +237,10 @@ def delete_secgroup_rule(uuid):
     nc = get_neutron_client()
     nc.delete_security_group_rule(uuid)
 
+def delete_floatingip(uuid):
+    nc = get_neutron_client()
+    nc.delete_floatingip(uuid)
+
 def delete_keypair(name):
     nc = get_nova_client()
     nc.keypairs.delete(name)
@@ -259,6 +263,23 @@ def create_keypair(name, path):
     with open(path, 'r') as fp:
         key = fp.read()
     nc.keypairs.create(name, key)
+
+def find_floating_network():
+    nc = get_neutron_client()
+    networks = nc.list_networks(**{'router:external': True})
+    return networks['networks'][0]['id']
+
+def create_floating_ip(record_resource):
+    nc = get_neutron_client()
+    floating_network = find_floating_network()
+    floatingip = {'floating_network_id': floating_network}
+    floatingip = nc.create_floatingip({'floatingip': floatingip})
+    record_resource('floatingip', floatingip['floatingip']['id'])
+    return floatingip['floatingip']['id']
+
+def associate_floating_ip(port_id, fip_id):
+    nc = get_neutron_client()
+    nc.update_floatingip(fip_id, {'floatingip': {'port_id': port_id}})
 
 def create_network(name, info, record_resource):
     nc = get_neutron_client()
@@ -321,8 +342,13 @@ def create_node(name, info, networks, secgroups,
        port_name = '%s_eth%d' % (name, eth_idx)
        port_id = create_port(port_name, _map_network(network['network']),
                              [secgroups[secgroup] for secgroup in network.get('secgroups', [])])
-       nics.append({'port-id': port_id})
        record_resource('port', port_id)
+
+       if network.get('assign_floating_ip', False):
+           fip_id = create_floating_ip(record_resource)
+           associate_floating_ip(port_id, fip_id)
+
+       nics.append({'port-id': port_id})
 
     bdm = [{'source_type': 'image',
             'uuid': info['image'],

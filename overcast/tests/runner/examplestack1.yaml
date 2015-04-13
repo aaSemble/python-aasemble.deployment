@@ -15,6 +15,7 @@ nodes:
     - network: default
       securitygroups:
       - jumphost
+      assign_floating_ip: true
     - network: undercloud
 networks:
   undercloud:

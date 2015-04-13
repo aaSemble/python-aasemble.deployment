@@ -173,6 +173,28 @@ class MainTests(unittest.TestCase):
         self.assertEquals(side_effects, [])
 
     @mock.patch('overcast.runner.get_neutron_client')
+    def test_find_floating_network(self, get_neutron_client):
+        nc = get_neutron_client.return_value
+        nc.list_networks.return_value = {'networks': [{'id': 'netuuid'}]}
+
+        self.assertEquals(overcast.runner.find_floating_network(), 'netuuid')
+
+        nc.list_networks.assert_called_once_with(**{'router:external': True})
+
+    @mock.patch('overcast.runner.get_neutron_client')
+    @mock.patch('overcast.runner.find_floating_network')
+    def test_create_floating_ip(self, find_floating_network, get_neutron_client):
+        nc = get_neutron_client.return_value
+        find_floating_network.return_value = 'netuuid'
+
+        nc.create_floatingip.return_value = {'floatingip': {'id': 'theuuid'}}
+
+        record_resource = mock.MagicMock()
+        self.assertEquals(overcast.runner.create_floating_ip(record_resource), 'theuuid')
+
+        nc.create_floatingip.assert_called_once_with({'floatingip': {'floating_network_id': 'netuuid'}})
+
+    @mock.patch('overcast.runner.get_neutron_client')
     def test_create_network(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.create_network.return_value = {'network': {'id': 'theuuid'}}
@@ -226,7 +248,8 @@ class MainTests(unittest.TestCase):
 
     @mock.patch('overcast.runner.create_port')
     @mock.patch('overcast.runner.get_nova_client')
-    def test_create_node(self, get_nova_client, create_port):
+    @mock.patch('overcast.runner.get_neutron_client')
+    def test_create_node(self, get_neutron_client, get_nova_client, create_port):
         nc = get_nova_client.return_value
         record_resource = mock.MagicMock()
 
@@ -246,7 +269,7 @@ class MainTests(unittest.TestCase):
                                      'flavor': 'small',
                                      'disk': 10,
                                      'networks': [{'network': 'mapped'},
-                                                  {'network': 'ephemeral'},
+                                                  {'network': 'ephemeral', 'assign_floating_ip': True},
                                                   {'network': 'passedthrough'}]},
                                     networks={'ephemeral': 'theoneIjustcreated'},
                                     secgroups={},
@@ -320,9 +343,10 @@ class MainTests(unittest.TestCase):
                                                  [{'to_port': 22,
                                                    'cidr': '0.0.0.0/0',
                                                    'from_port': 22}], mock.ANY)
-        print create_node.mock_calls
         create_node.assert_any_call('x123_other',
-                                    {'nics': [{'securitygroups': ['jumphost'], 'network': 'default'},
+                                    {'nics': [{'securitygroups': ['jumphost'],
+                                               'network': 'default',
+                                               'assign_floating_ip': True},
                                               {'network': 'undercloud'}],
                                      'flavor': 'bootstrap',
                                      'image': 'trusty'},

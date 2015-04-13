@@ -8,6 +8,7 @@ nodes:
       securitygroups:
       - jumphost
       - undercloud
+      assign_floating_ip: true
 networks:
   undercloud:
     cidr: 10.130.182.0/24

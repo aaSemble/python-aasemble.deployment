@@ -1,4 +1,3 @@
-- Add a setting of some sort to denote nodes that must have a floating IP assigned to them.
 - Make remote commands connect to the nodes we've built.
 - Export ALL_NODES environment to commands after provision steps
 - Support long-lived deployments
