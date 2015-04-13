@@ -133,6 +133,7 @@ class DeploymentRunner(object):
         self.networks = {}
         self.secgroups = {}
         self.nodes = {}
+        self.prefix = None
 
     def get_keystone_session(self):
         from keystoneclient import session as keystone_session
@@ -315,6 +316,13 @@ class DeploymentRunner(object):
     def shell_step(self, details, environment=None, args=None, mappings=None):
         cmd = self.shell_step_cmd(details)
 
+        if environment is None:
+            environment = os.environ.copy()
+        else:
+            environment = environment.copy()
+
+        environment['ALL_NODES'] = ' '.join([self.add_prefix(s) for s in self.nodes.keys()])
+
         if details.get('total-timeout', False):
             overall_deadline = time.time() + utils.parse_time(details['total-timeout'])
         else:
@@ -371,14 +379,14 @@ class DeploymentRunner(object):
         else:
              return 'bash'
 
+    def add_prefix(self, s):
+        if self.prefix:
+            return '%s_%s' % (self.prefix, s)
+        else:
+            return s
+
     def provision_step(self, details, args, mappings):
         stack = load_yaml(details['stack'])
-
-        def _add_prefix(s):
-            if args.prefix:
-                return '%s_%s' % (args.prefix, s)
-            else:
-                return s
 
         if args.cleanup:
             cleanup = open(args.cleanup, 'a+')
@@ -389,7 +397,7 @@ class DeploymentRunner(object):
                 pass
 
         if args.key:
-            keypair_name = _add_prefix('pubkey')
+            keypair_name = self.add_prefix('pubkey')
             self.create_keypair(keypair_name, args.key)
             record_resource('keypair', keypair_name)
         else:
@@ -402,20 +410,20 @@ class DeploymentRunner(object):
             userdata = None
 
         for base_network_name, network_info in stack['networks'].items():
-            network_name = _add_prefix(base_network_name)
+            network_name = self.add_prefix(base_network_name)
             self.networks[base_network_name] = self.create_network(network_name,
                                                                    network_info,
                                                                    record_resource)
 
         for base_secgroup_name, secgroup_info in stack['securitygroups'].items():
-            secgroup_name = _add_prefix(base_secgroup_name)
+            secgroup_name = self.add_prefix(base_secgroup_name)
             self.secgroups[base_secgroup_name] = self.create_security_group(secgroup_name,
                                                                             secgroup_info,
                                                                             record_resource)
 
         for base_node_name, node_info in stack['nodes'].items():
             def _create_node(base_name):
-                node_name = _add_prefix(base_name)
+                node_name = self.add_prefix(base_name)
                 self.nodes[base_name] = self.create_node(node_name, node_info,
                                                          mappings=mappings,
                                                          keypair=keypair_name,
@@ -431,6 +439,7 @@ class DeploymentRunner(object):
 
 
     def deploy(self, args, stdout=sys.stdout):
+        self.prefix = args.prefix
         cfg = load_yaml(args.cfg)
         if args.mappings:
             mappings = load_mappings(args.mappings)

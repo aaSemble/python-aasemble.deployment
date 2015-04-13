@@ -9,6 +9,14 @@ nodes:
       - jumphost
       - undercloud
       assign_floating_ip: true
+  hidden:
+    flavor: bootstrap
+    image: trusty
+    disk: 10
+    networks:
+    - network: undercloud
+      securitygroups:
+      - undercloud
 networks:
   undercloud:
     cidr: 10.130.182.0/24

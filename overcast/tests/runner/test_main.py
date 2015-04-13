@@ -342,6 +342,7 @@ class MainTests(unittest.TestCase):
             prefix = 'x123'
 
         args = Args()
+        self.dr.prefix = 'x123'
         self.dr.provision_step({'stack': 'overcast/tests/runner/examplestack1.yaml'}, args, {})
 
         create_network.assert_called_with('x123_undercloud', {'cidr': '10.240.292.0/24'}, mock.ANY)
