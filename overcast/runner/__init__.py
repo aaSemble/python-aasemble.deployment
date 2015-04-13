@@ -18,6 +18,7 @@ import argparse
 import ConfigParser
 import logging
 import os
+import pipes
 import select
 import subprocess
 import sys
@@ -314,14 +315,9 @@ class DeploymentRunner(object):
         return server.id, fip_address
 
     def shell_step(self, details, environment=None, args=None, mappings=None):
-        cmd = self.shell_step_cmd(details)
+        env_prefix = 'ALL_NODES=%s' % pipes.quote(' '.join([self.add_prefix(s) for s in self.nodes.keys()]))
 
-        if environment is None:
-            environment = os.environ.copy()
-        else:
-            environment = environment.copy()
-
-        environment['ALL_NODES'] = ' '.join([self.add_prefix(s) for s in self.nodes.keys()])
+        cmd = self.shell_step_cmd(details, env_prefix)
 
         if details.get('total-timeout', False):
             overall_deadline = time.time() + utils.parse_time(details['total-timeout'])
@@ -372,12 +368,12 @@ class DeploymentRunner(object):
                         continue
                 raise
 
-    def shell_step_cmd(self, details):
+    def shell_step_cmd(self, details, env_prefix=''):
         if details.get('type', None) == 'remote':
              node = self.nodes[details['node']][1]
-             return 'ssh -o StrictHostKeyChecking=no ubuntu@%s bash' % (node)
+             return 'ssh -o StrictHostKeyChecking=no ubuntu@%s "%s bash"' % (node, env_prefix)
         else:
-             return 'bash'
+             return '%s bash' % (env_prefix,)
 
     def add_prefix(self, s):
         if self.prefix:
