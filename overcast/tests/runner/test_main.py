@@ -12,6 +12,7 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
+from contextlib import nested
 import mock
 import os.path
 import unittest
@@ -38,6 +39,9 @@ small = 34fb3740-d158-472c-8520-017278c75008
 '''
 
 class MainTests(unittest.TestCase):
+    def setUp(self):
+        self.dr = overcast.runner.DeploymentRunner()
+
     def test_load_yaml(self):
         with mock.patch('__builtin__.open') as m:
             m.return_value.__enter__.return_value = StringIO(yaml_data)
@@ -95,13 +99,13 @@ class MainTests(unittest.TestCase):
     @mock.patch('overcast.runner.run_cmd_once')
     def test_shell_step(self, run_cmd_once):
         details = {'cmd': 'true'}
-        overcast.runner.shell_step(details, {})
+        self.dr.shell_step(details, {})
         run_cmd_once.assert_called_once_with(mock.ANY, 'true', mock.ANY, None)
 
     @mock.patch('overcast.runner.run_cmd_once')
     def test_shell_step_failure(self, run_cmd_once):
         details = {'cmd': 'false'}
-        overcast.runner.shell_step(details, {})
+        self.dr.shell_step(details, {})
         run_cmd_once.assert_called_once_with(mock.ANY, 'false', mock.ANY, None)
 
     @mock.patch('overcast.runner.run_cmd_once')
@@ -111,7 +115,7 @@ class MainTests(unittest.TestCase):
 
         side_effects = [overcast.exceptions.CommandFailedException()]*100 + [True]
         run_cmd_once.side_effect = side_effects
-        overcast.runner.shell_step(details, {})
+        self.dr.shell_step(details, {})
         self.assertEquals(list(run_cmd_once.side_effect), [])
 
     @mock.patch('overcast.runner.time')
@@ -130,7 +134,7 @@ class MainTests(unittest.TestCase):
 
         side_effects = [overcast.exceptions.CommandFailedException()]*2 + [True]
         run_cmd_once.side_effect = side_effects
-        overcast.runner.shell_step(details, {})
+        self.dr.shell_step(details, {})
         self.assertEquals(list(run_cmd_once.side_effect), [])
         self.assertEquals(curtime[0], 10)
 
@@ -142,7 +146,7 @@ class MainTests(unittest.TestCase):
 
         side_effects = [overcast.exceptions.CommandTimedOutException()]*10 + [True]
         run_cmd_once.side_effect = side_effects
-        overcast.runner.shell_step(details, {})
+        self.dr.shell_step(details, {})
         self.assertEquals(list(run_cmd_once.side_effect), [])
 
 
@@ -169,39 +173,40 @@ class MainTests(unittest.TestCase):
 
         run_cmd_once.side_effect = side_effect
         self.assertRaises(overcast.exceptions.CommandTimedOutException,
-                          overcast.runner.shell_step, details, {})
+                          self.dr.shell_step, details, {})
         self.assertEquals(side_effects, [])
 
-    @mock.patch('overcast.runner.get_neutron_client')
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
     def test_find_floating_network(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.list_networks.return_value = {'networks': [{'id': 'netuuid'}]}
 
-        self.assertEquals(overcast.runner.find_floating_network(), 'netuuid')
+        self.assertEquals(self.dr.find_floating_network(), 'netuuid')
 
         nc.list_networks.assert_called_once_with(**{'router:external': True})
 
-    @mock.patch('overcast.runner.get_neutron_client')
-    @mock.patch('overcast.runner.find_floating_network')
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
+    @mock.patch('overcast.runner.DeploymentRunner.find_floating_network')
     def test_create_floating_ip(self, find_floating_network, get_neutron_client):
         nc = get_neutron_client.return_value
+    
         find_floating_network.return_value = 'netuuid'
 
         nc.create_floatingip.return_value = {'floatingip': {'id': 'theuuid'}}
 
         record_resource = mock.MagicMock()
-        self.assertEquals(overcast.runner.create_floating_ip(record_resource), 'theuuid')
+        self.assertEquals(self.dr.create_floating_ip(record_resource), 'theuuid')
 
         nc.create_floatingip.assert_called_once_with({'floatingip': {'floating_network_id': 'netuuid'}})
 
-    @mock.patch('overcast.runner.get_neutron_client')
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
     def test_create_network(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.create_network.return_value = {'network': {'id': 'theuuid'}}
         nc.create_subnet.return_value = {'subnet': {'id': 'thesubnetuuid'}}
 
         record_resource = mock.MagicMock()
-        overcast.runner.create_network('netname', {'cidr': '10.0.0.0/12'}, record_resource)
+        self.dr.create_network('netname', {'cidr': '10.0.0.0/12'}, record_resource)
 
         nc.create_network.assert_called_once_with({'network': {'name': 'netname',
                                                                'admin_state_up': True}})
@@ -212,14 +217,14 @@ class MainTests(unittest.TestCase):
         record_resource.assert_any_call('network', 'theuuid')
         record_resource.assert_any_call('subnet', 'thesubnetuuid')
 
-    @mock.patch('overcast.runner.get_neutron_client')
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
     def test_create_security_group(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.create_security_group.return_value = {'security_group': {'id': 'theuuid'}}
         nc.create_security_group_rule.return_value = {'security_group_rule': {'id': 'theruleuuid'}}
 
         record_resource = mock.MagicMock()
-        overcast.runner.create_security_group('secgroupname', [{'cidr': '12.0.0.0/12',
+        self.dr.create_security_group('secgroupname', [{'cidr': '12.0.0.0/12',
                                                                 'protocol': 'tcp',
                                                                 'from_port': 21,
                                                                 'to_port': 22}],
@@ -236,19 +241,19 @@ class MainTests(unittest.TestCase):
         record_resource.assert_any_call('secgroup', 'theuuid')
         record_resource.assert_any_call('secgroup_rule', 'theruleuuid')
 
-    @mock.patch('overcast.runner.get_neutron_client')
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
     def test_create_security_group_without_rules(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.create_security_group.return_value = {'security_group': {'id': 'theuuid'}}
 
         record_resource = mock.MagicMock()
 
-        overcast.runner.create_security_group('secgroupname', None, record_resource)
+        self.dr.create_security_group('secgroupname', None, record_resource)
         nc.create_security_group.assert_called_once_with({'security_group': {'name': 'secgroupname'}})
 
-    @mock.patch('overcast.runner.create_port')
-    @mock.patch('overcast.runner.get_nova_client')
-    @mock.patch('overcast.runner.get_neutron_client')
+    @mock.patch('overcast.runner.DeploymentRunner.create_port')
+    @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
     def test_create_node(self, get_neutron_client, get_nova_client, create_port):
         nc = get_nova_client.return_value
         record_resource = mock.MagicMock()
@@ -264,7 +269,7 @@ class MainTests(unittest.TestCase):
 
         create_port.side_effect = _create_port
 
-        overcast.runner.create_node('x123_test1',
+        self.dr.create_node('x123_test1',
                                     {'image': 'trusty',
                                      'flavor': 'small',
                                      'disk': 10,
@@ -324,9 +329,9 @@ class MainTests(unittest.TestCase):
         self.assertEquals(output.getvalue(), expected_value)
 
 
-    @mock.patch('overcast.runner.create_network')
-    @mock.patch('overcast.runner.create_security_group')
-    @mock.patch('overcast.runner.create_node')
+    @mock.patch('overcast.runner.DeploymentRunner.create_network')
+    @mock.patch('overcast.runner.DeploymentRunner.create_security_group')
+    @mock.patch('overcast.runner.DeploymentRunner.create_node')
     def test_provision_step(self, create_node, create_security_group, create_network):
         create_network.return_value = 'netuuid'
         create_security_group.return_value = 'sguuid'
@@ -336,7 +341,7 @@ class MainTests(unittest.TestCase):
             prefix = 'x123'
 
         args = Args()
-        overcast.runner.provision_step({'stack': 'overcast/tests/runner/examplestack1.yaml'}, args, {})
+        self.dr.provision_step({'stack': 'overcast/tests/runner/examplestack1.yaml'}, args, {})
 
         create_network.assert_called_with('x123_undercloud', {'cidr': '10.240.292.0/24'}, mock.ANY)
         create_security_group.assert_called_with('x123_jumphost',

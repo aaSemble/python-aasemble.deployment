@@ -124,58 +124,6 @@ def run_cmd_once(shell_cmd, real_cmd, environment, deadline):
             raise exceptions.CommandTimedOutException(stdin)
 
 
-def shell_step(details, environment=None, args=None, mappings=None):
-    cmd = shell_step_cmd(details)
-
-    if details.get('total-timeout', False):
-        overall_deadline = time.time() + utils.parse_time(details['total-timeout'])
-    else:
-        overall_deadline = None
-
-    if details.get('timeout', False):
-        individual_exec_limit = utils.parse_time(details['timeout'])
-    else:
-        individual_exec_limit = None
-
-    if details.get('retry-delay', False):
-        retry_delay = utils.parse_time(details['retry-delay'])
-    else:
-        retry_delay = 0
-
-    def wait():
-        time.sleep(retry_delay)
-
-    # Four settings matter here:
-    # retry-if-fails: True/False
-    # retry-delay: Time to wait between retries
-    # timeout: Max time per command execution
-    # total-timeout: How long time to spend on this in total
-    while True:
-        if individual_exec_limit:
-            deadline = time.time() + individual_exec_limit
-            if overall_deadline:
-                if deadline > overall_deadline:
-                    deadline = overall_deadline
-        elif overall_deadline:
-            deadline = overall_deadline
-        else:
-            deadline = None
-
-        try:
-            run_cmd_once(cmd, details['cmd'], environment, deadline)
-            break
-        except exceptions.CommandFailedException:
-            if details.get('retry-if-fails', False):
-                wait()
-                continue
-            raise
-        except exceptions.CommandTimedOutException:
-            if details.get('retry-if-fails', False):
-                if time.time() + retry_delay < deadline:
-                    wait()
-                    continue
-            raise
-
 def get_creds_from_env():
     d = {}
     d['username'] = os.environ['OS_USERNAME']
@@ -186,276 +134,333 @@ def get_creds_from_env():
 #    d['cacert'] = os.environ.get('OS_CACERT', None)
     return d
 
-conncache = {}
-def get_keystone_session(conncache=conncache):
-    from keystoneclient import session as keystone_session
-    from keystoneclient.auth.identity import v2 as keystone_auth_id_v2
-    if 'keystone_session' not in conncache:
-        conncache['keystone_auth'] = keystone_auth_id_v2.Password(**get_creds_from_env())
-        conncache['keystone_session'] = keystone_session.Session(auth=conncache['keystone_auth'])
-    return conncache['keystone_session']
+class DeploymentRunner(object):
+    def __init__(self):
+        self.conncache = {}
 
-def get_keystone_client(conncache=conncache):
-    from keystoneclient.v2_0 import client as keystone_client
-    if 'keystone' not in conncache:
-        ks = get_keystone_session()
-        conncache['keystone'] = keystone_client.Client(session=ks)
-    return conncache['keystone']
+    def get_keystone_session(self):
+        from keystoneclient import session as keystone_session
+        from keystoneclient.auth.identity import v2 as keystone_auth_id_v2
+        if 'keystone_session' not in self.conncache:
+            self.conncache['keystone_auth'] = keystone_auth_id_v2.Password(**get_creds_from_env())
+            self.conncache['keystone_session'] = keystone_session.Session(auth=self.conncache['keystone_auth'])
+        return self.conncache['keystone_session']
 
-def get_nova_client(conncache=conncache):
-    import novaclient.client as novaclient
-    if 'nova' not in conncache:
-        ks = get_keystone_session()
-        conncache['nova'] = novaclient.Client("1.1", session=ks)
-    return conncache['nova']
+    def get_keystone_client(self):
+        from keystoneclient.v2_0 import client as keystone_client
+        if 'keystone' not in self.conncache:
+            ks = self.get_keystone_session()
+            self.conncache['keystone'] = keystone_client.Client(session=ks)
+        return self.conncache['keystone']
 
-def get_neutron_client(conncache=conncache):
-    import neutronclient.neutron.client as neutronclient
-#    logging.getLogger('urllib3.connectionpool').setLevel(logging.WARNING)
-    if 'neutron' not in conncache:
-        ks = get_keystone_session()
-        conncache['neutron'] = neutronclient.Client('2.0', session=ks)
-    return conncache['neutron']
+    def get_nova_client(self):
+        import novaclient.client as novaclient
+        if 'nova' not in self.conncache:
+            ks = self.get_keystone_session()
+            self.conncache['nova'] = novaclient.Client("1.1", session=ks)
+        return self.conncache['nova']
 
-def delete_port(uuid):
-    nc = get_neutron_client()
-    nc.delete_port(uuid)
+    def get_neutron_client(self):
+        import neutronclient.neutron.client as neutronclient
+        if 'neutron' not in self.conncache:
+            ks = self.get_keystone_session()
+            self.conncache['neutron'] = neutronclient.Client('2.0', session=ks)
+        return self.conncache['neutron']
 
-def delete_network(uuid):
-    nc = get_neutron_client()
-    nc.delete_network(uuid)
+    def delete_port(self, uuid):
+        nc = self.get_neutron_client()
+        nc.delete_port(uuid)
 
-def delete_subnet(uuid):
-    nc = get_neutron_client()
-    nc.delete_subnet(uuid)
+    def delete_network(self, uuid):
+        nc = self.get_neutron_client()
+        nc.delete_network(uuid)
 
-def delete_secgroup(uuid):
-    nc = get_neutron_client()
-    nc.delete_security_group(uuid)
+    def delete_subnet(self, uuid):
+        nc = self.get_neutron_client()
+        nc.delete_subnet(uuid)
 
-def delete_secgroup_rule(uuid):
-    nc = get_neutron_client()
-    nc.delete_security_group_rule(uuid)
+    def delete_secgroup(self, uuid):
+        nc = self.get_neutron_client()
+        nc.delete_security_group(uuid)
 
-def delete_floatingip(uuid):
-    nc = get_neutron_client()
-    nc.delete_floatingip(uuid)
+    def delete_secgroup_rule(self, uuid):
+        nc = self.get_neutron_client()
+        nc.delete_security_group_rule(uuid)
 
-def delete_keypair(name):
-    nc = get_nova_client()
-    nc.keypairs.delete(name)
+    def delete_floatingip(self, uuid):
+        nc = self.get_neutron_client()
+        nc.delete_floatingip(uuid)
 
-def delete_server(uuid):
-    nc = get_nova_client()
-    nc.servers.delete(uuid)
+    def delete_keypair(self, name):
+        nc = self.get_nova_client()
+        nc.keypairs.delete(name)
 
-def create_port(name, network, secgroups):
-    nc = get_neutron_client()
-    port = {'name': name,
-            'admin_state_up': True,
-            'network_id': network,
-            'security_groups': secgroups}
-    port = nc.create_port({'port': port})
-    return port['port']['id']
+    def delete_server(self, uuid):
+        nc = self.get_nova_client()
+        nc.servers.delete(uuid)
 
-def create_keypair(name, path):
-    nc = get_nova_client()
-    with open(path, 'r') as fp:
-        key = fp.read()
-    nc.keypairs.create(name, key)
+    def create_port(self, name, network, secgroups):
+        nc = self.get_neutron_client()
+        port = {'name': name,
+                'admin_state_up': True,
+                'network_id': network,
+                'security_groups': secgroups}
+        port = nc.create_port({'port': port})
+        return port['port']['id']
 
-def find_floating_network():
-    nc = get_neutron_client()
-    networks = nc.list_networks(**{'router:external': True})
-    return networks['networks'][0]['id']
+    def create_keypair(self, name, path):
+        nc = self.get_nova_client()
+        with open(path, 'r') as fp:
+            key = fp.read()
+        nc.keypairs.create(name, key)
 
-def create_floating_ip(record_resource):
-    nc = get_neutron_client()
-    floating_network = find_floating_network()
-    floatingip = {'floating_network_id': floating_network}
-    floatingip = nc.create_floatingip({'floatingip': floatingip})
-    record_resource('floatingip', floatingip['floatingip']['id'])
-    return floatingip['floatingip']['id']
+    def find_floating_network(self, ):
+        nc = self.get_neutron_client()
+        networks = nc.list_networks(**{'router:external': True})
+        return networks['networks'][0]['id']
 
-def associate_floating_ip(port_id, fip_id):
-    nc = get_neutron_client()
-    nc.update_floatingip(fip_id, {'floatingip': {'port_id': port_id}})
+    def create_floating_ip(self, record_resource):
+        nc = self.get_neutron_client()
+        floating_network = self.find_floating_network()
+        floatingip = {'floating_network_id': floating_network}
+        floatingip = nc.create_floatingip({'floatingip': floatingip})
+        record_resource('floatingip', floatingip['floatingip']['id'])
+        return floatingip['floatingip']['id']
 
-def create_network(name, info, record_resource):
-    nc = get_neutron_client()
-    network = {'name': name, 'admin_state_up': True}
-    network = nc.create_network({'network': network})
-    record_resource('network', network['network']['id'])
+    def associate_floating_ip(self, port_id, fip_id):
+        nc = self.get_neutron_client()
+        nc.update_floatingip(fip_id, {'floatingip': {'port_id': port_id}})
 
-    subnet = {"network_id": network['network']['id'],
-              "ip_version": 4,
-              "cidr": info['cidr'],
-              "name": name}
-    subnet = nc.create_subnet({'subnet': subnet})
-    record_resource('subnet', subnet['subnet']['id'])
+    def create_network(self, name, info, record_resource):
+        nc = self.get_neutron_client()
+        network = {'name': name, 'admin_state_up': True}
+        network = nc.create_network({'network': network})
+        record_resource('network', network['network']['id'])
 
-    return network['network']['id']
+        subnet = {"network_id": network['network']['id'],
+                  "ip_version": 4,
+                  "cidr": info['cidr'],
+                  "name": name}
+        subnet = nc.create_subnet({'subnet': subnet})
+        record_resource('subnet', subnet['subnet']['id'])
 
-def create_security_group(name, info, record_resource):
-    nc = get_neutron_client()
-    secgroup = {'name': name}
-    secgroup = nc.create_security_group({'security_group': secgroup})
-    record_resource('secgroup', secgroup['security_group']['id'])
+        return network['network']['id']
 
-    for rule in (info or []):
-        secgroup_rule = {"direction": "ingress",
-                         "remote_ip_prefix": rule['cidr'],
-                         "ethertype": "IPv4",
-                         "port_range_min": rule['from_port'],
-                         "port_range_max": rule['to_port'],
-                         "protocol": rule['protocol'],
-                         "security_group_id": secgroup['security_group']['id']}
-        secgroup_rule = nc.create_security_group_rule({'security_group_rule': secgroup_rule})
-        record_resource('secgroup_rule', secgroup_rule['security_group_rule']['id'])
-    return secgroup['security_group']['id']
+    def create_security_group(self, name, info, record_resource):
+        nc = self.get_neutron_client()
+        secgroup = {'name': name}
+        secgroup = nc.create_security_group({'security_group': secgroup})
+        record_resource('secgroup', secgroup['security_group']['id'])
 
-def create_node(name, info, networks, secgroups,
-                mappings, keypair, userdata, record_resource):
-    nc = get_nova_client()
+        for rule in (info or []):
+            secgroup_rule = {"direction": "ingress",
+                             "remote_ip_prefix": rule['cidr'],
+                             "ethertype": "IPv4",
+                             "port_range_min": rule['from_port'],
+                             "port_range_max": rule['to_port'],
+                             "protocol": rule['protocol'],
+                             "security_group_id": secgroup['security_group']['id']}
+            secgroup_rule = nc.create_security_group_rule({'security_group_rule': secgroup_rule})
+            record_resource('secgroup_rule', secgroup_rule['security_group_rule']['id'])
+        return secgroup['security_group']['id']
 
-    if info['image'] in mappings.get('images', {}):
-        info['image'] = mappings['images'][info['image']]
+    def create_node(self, name, info, networks, secgroups,
+                    mappings, keypair, userdata, record_resource):
+        nc = self.get_nova_client()
 
-    if info['flavor'] in mappings.get('flavors', {}):
-        info['flavor'] = mappings['flavors'][info['flavor']]
+        if info['image'] in mappings.get('images', {}):
+            info['image'] = mappings['images'][info['image']]
 
-    image = nc.images.get(info['image'])
-    flavor = nc.flavors.get(info['flavor'])
+        if info['flavor'] in mappings.get('flavors', {}):
+            info['flavor'] = mappings['flavors'][info['flavor']]
 
-    def _map_network(network):
-        if network in mappings.get('networks', {}):
-            netid = mappings['networks'][network]
-        elif network in networks:
-            netid = networks[network]
+        image = nc.images.get(info['image'])
+        flavor = nc.flavors.get(info['flavor'])
+
+        def _map_network(network):
+            if network in mappings.get('networks', {}):
+                netid = mappings['networks'][network]
+            elif network in networks:
+                netid = networks[network]
+            else:
+                netid = network
+
+            return netid
+
+        nics = []
+        for eth_idx, network in enumerate(info['networks']):
+           port_name = '%s_eth%d' % (name, eth_idx)
+           port_id = self.create_port(port_name, _map_network(network['network']),
+                                      [secgroups[secgroup] for secgroup in network.get('secgroups', [])])
+           record_resource('port', port_id)
+
+           if network.get('assign_floating_ip', False):
+               fip_id = self.create_floating_ip(record_resource)
+               self.associate_floating_ip(port_id, fip_id)
+
+           nics.append({'port-id': port_id})
+
+        bdm = [{'source_type': 'image',
+                'uuid': info['image'],
+                'destination_type': 'volume',
+                'volume_size': info['disk'],
+                'delete_on_termination': 'true',
+                'boot_index': '0'}]
+        server = nc.servers.create(name, image=None,
+                                   block_device_mapping_v2=bdm,
+                                   flavor=flavor, nics=nics,
+                                   key_name=keypair, userdata=userdata)
+        record_resource('server', server.id)
+        return server.id
+
+    def shell_step(self, details, environment=None, args=None, mappings=None):
+        cmd = shell_step_cmd(details)
+
+        if details.get('total-timeout', False):
+            overall_deadline = time.time() + utils.parse_time(details['total-timeout'])
         else:
-            netid = network
+            overall_deadline = None
 
-        return netid
-
-    nics = []
-    for eth_idx, network in enumerate(info['networks']):
-       port_name = '%s_eth%d' % (name, eth_idx)
-       port_id = create_port(port_name, _map_network(network['network']),
-                             [secgroups[secgroup] for secgroup in network.get('secgroups', [])])
-       record_resource('port', port_id)
-
-       if network.get('assign_floating_ip', False):
-           fip_id = create_floating_ip(record_resource)
-           associate_floating_ip(port_id, fip_id)
-
-       nics.append({'port-id': port_id})
-
-    bdm = [{'source_type': 'image',
-            'uuid': info['image'],
-            'destination_type': 'volume',
-            'volume_size': info['disk'],
-            'delete_on_termination': 'true',
-            'boot_index': '0'}]
-    server = nc.servers.create(name, image=None,
-                               block_device_mapping_v2=bdm,
-                               flavor=flavor, nics=nics,
-                               key_name=keypair, userdata=userdata)
-    record_resource('server', server.id)
-    return server.id
-
-def provision_step(details, args, mappings):
-    stack = load_yaml(details['stack'])
-    networks = {}
-    secgroups = {}
-    nodes = {}
-
-    def _add_prefix(s):
-        if args.prefix:
-            return '%s_%s' % (args.prefix, s)
+        if details.get('timeout', False):
+            individual_exec_limit = utils.parse_time(details['timeout'])
         else:
-            return s
+            individual_exec_limit = None
 
-    if args.cleanup:
-        cleanup = open(args.cleanup, 'a+')
-        def record_resource(typ, id):
-            cleanup.write('%s: %s\n' % (typ, id))
-    else:
-        def record_resource(typ, id):
-            pass
+        if details.get('retry-delay', False):
+            retry_delay = utils.parse_time(details['retry-delay'])
+        else:
+            retry_delay = 0
 
-    if args.key:
-        keypair_name = _add_prefix('pubkey')
-        create_keypair(keypair_name, args.key)
-        record_resource('keypair', keypair_name)
-    else:
-        keypair_name = None
+        def wait():
+            time.sleep(retry_delay)
 
-    if 'userdata' in details:
-        with open(details['userdata'], 'r') as fp:
-            userdata = fp.read()
-    else:
-        userdata = None
+        # Four settings matter here:
+        # retry-if-fails: True/False
+        # retry-delay: Time to wait between retries
+        # timeout: Max time per command execution
+        # total-timeout: How long time to spend on this in total
+        while True:
+            if individual_exec_limit:
+                deadline = time.time() + individual_exec_limit
+                if overall_deadline:
+                    if deadline > overall_deadline:
+                        deadline = overall_deadline
+            elif overall_deadline:
+                deadline = overall_deadline
+            else:
+                deadline = None
 
-    for base_network_name, network_info in stack['networks'].items():
-        network_name = _add_prefix(base_network_name)
-        networks[base_network_name] = create_network(network_name,
-                                                     network_info,
-                                                     record_resource)
+            try:
+                run_cmd_once(cmd, details['cmd'], environment, deadline)
+                break
+            except exceptions.CommandFailedException:
+                if details.get('retry-if-fails', False):
+                    wait()
+                    continue
+                raise
+            except exceptions.CommandTimedOutException:
+                if details.get('retry-if-fails', False):
+                    if time.time() + retry_delay < deadline:
+                        wait()
+                        continue
+                raise
 
-    for base_secgroup_name, secgroup_info in stack['securitygroups'].items():
-        secgroup_name = _add_prefix(base_secgroup_name)
-        secgroups[base_secgroup_name] = create_security_group(secgroup_name,
-                                                              secgroup_info,
+    def provision_step(self, details, args, mappings):
+        stack = load_yaml(details['stack'])
+        networks = {}
+        secgroups = {}
+        nodes = {}
+
+        def _add_prefix(s):
+            if args.prefix:
+                return '%s_%s' % (args.prefix, s)
+            else:
+                return s
+
+        if args.cleanup:
+            cleanup = open(args.cleanup, 'a+')
+            def record_resource(typ, id):
+                cleanup.write('%s: %s\n' % (typ, id))
+        else:
+            def record_resource(typ, id):
+                pass
+
+        if args.key:
+            keypair_name = _add_prefix('pubkey')
+            self.create_keypair(keypair_name, args.key)
+            record_resource('keypair', keypair_name)
+        else:
+            keypair_name = None
+
+        if 'userdata' in details:
+            with open(details['userdata'], 'r') as fp:
+                userdata = fp.read()
+        else:
+            userdata = None
+
+        for base_network_name, network_info in stack['networks'].items():
+            network_name = _add_prefix(base_network_name)
+            networks[base_network_name] = self.create_network(network_name,
+                                                              network_info,
                                                               record_resource)
 
-    for base_node_name, node_info in stack['nodes'].items():
-        def _create_node(base_name):
-            node_name = _add_prefix(base_name)
-            nodes[base_name] = create_node(node_name, node_info,
-                                           networks=networks,
-                                           secgroups=secgroups,
-                                           mappings=mappings,
-                                           keypair=keypair_name,
-                                           userdata=userdata,
-                                           record_resource=record_resource)
+        for base_secgroup_name, secgroup_info in stack['securitygroups'].items():
+            secgroup_name = _add_prefix(base_secgroup_name)
+            secgroups[base_secgroup_name] = self.create_security_group(secgroup_name,
+                                                                       secgroup_info,
+                                                                       record_resource)
 
-        if 'number' in node_info:
-            count = node_info.pop('number')
-            for idx in range(1, count+1):
-                _create_node('%s%d' % (base_node_name, idx))
+        for base_node_name, node_info in stack['nodes'].items():
+            def _create_node(base_name):
+                node_name = _add_prefix(base_name)
+                nodes[base_name] = self.create_node(node_name, node_info,
+                                                    networks=networks,
+                                                    secgroups=secgroups,
+                                                    mappings=mappings,
+                                                    keypair=keypair_name,
+                                                    userdata=userdata,
+                                                    record_resource=record_resource)
+
+            if 'number' in node_info:
+                count = node_info.pop('number')
+                for idx in range(1, count+1):
+                    _create_node('%s%d' % (base_node_name, idx))
+            else:
+                _create_node(base_node_name)
+
+
+    def deploy(self, args, stdout=sys.stdout):
+        cfg = load_yaml(args.cfg)
+        if args.mappings:
+            mappings = load_mappings(args.mappings)
         else:
-            _create_node(base_node_name)
+            mappings = {'images': {},
+                        'networks': {},
+                        'flavors': {}}
+        for step in cfg[args.name]:
+            step_type = step.keys()[0]
+            details = step[step_type]
+            func = getattr(self, '%s_step' % step_type)
+            func(details, args=args, mappings=mappings)
 
+    def cleanup(self, args, stdout=sys.stdout):
+        with open(args.log, 'r') as fp:
+            lines = [l.strip() for l in fp]
 
-def deploy(args, stdout=sys.stdout):
-    cfg = load_yaml(args.cfg)
-    if args.mappings:
-        mappings = load_mappings(args.mappings)
-    else:
-        mappings = {'images': {},
-                    'networks': {},
-                    'flavors': {}}
-    for step in cfg[args.name]:
-        step_type = step.keys()[0]
-        details = step[step_type]
-        func = globals()['%s_step' % step_type]
-        func(details, args=args, mappings=mappings)
+        lines.reverse()
+        for l in lines:
+            resource_type, uuid = l.split(': ')
+            func = getattr(self, 'delete_%s' % resource_type)
+            try:
+                func(uuid)
+            except:
+                pass
 
-def cleanup(args, stdout=sys.stdout):
-    with open(args.log, 'r') as fp:
-        lines = [l.strip() for l in fp]
-
-    lines.reverse()
-    for l in lines:
-        resource_type, uuid = l.split(': ')
-        func = globals()['delete_%s' % resource_type]
-        try:
-            func(uuid)
-        except:
-            pass
 
 
 def main(argv=sys.argv[1:], stdout=sys.stdout):
+    dr = DeploymentRunner()
+
     parser = argparse.ArgumentParser(description='Run deployment')
 
     subparsers = parser.add_subparsers(help='Subcommand help')
@@ -467,7 +472,7 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
     list_refs_parser.add_argument('stack', help='YAML file describing stack')
 
     deploy_parser = subparsers.add_parser('deploy', help='Perform deployment')
-    deploy_parser.set_defaults(func=deploy)
+    deploy_parser.set_defaults(func=dr.deploy)
     deploy_parser.add_argument('--cfg', default='.overcast.yaml',
                                help='Deployment config file')
     deploy_parser.add_argument('--prefix', help='Resource name prefix')
@@ -477,7 +482,7 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
     deploy_parser.add_argument('name', help='Deployment to perform')
 
     cleanup_parser = subparsers.add_parser('cleanup', help='Clean up')
-    cleanup_parser.set_defaults(func=cleanup)
+    cleanup_parser.set_defaults(func=dr.cleanup)
     cleanup_parser.add_argument('log', help='Clean up log (generated by deploy)')
 
     args = parser.parse_args(argv)
