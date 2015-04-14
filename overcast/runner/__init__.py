@@ -129,12 +129,18 @@ def get_creds_from_env():
     return d
 
 class DeploymentRunner(object):
-    def __init__(self):
+    def __init__(self, config=None, prefix=None, mappings=None, key=None,
+                 record_resource=None):
+        self.cfg = config
+        self.prefix = prefix
+        self.mappings = mappings or {}
+        self.key = key
+        self.record_resource = lambda *args, **kwargs: None
+
         self.conncache = {}
         self.networks = {}
         self.secgroups = {}
         self.nodes = {}
-        self.prefix = None
 
     def get_keystone_session(self):
         from keystoneclient import session as keystone_session
@@ -206,23 +212,21 @@ class DeploymentRunner(object):
         port = nc.create_port({'port': port})
         return port['port']['id']
 
-    def create_keypair(self, name, path):
+    def create_keypair(self, name, keydata):
         nc = self.get_nova_client()
-        with open(path, 'r') as fp:
-            key = fp.read()
-        nc.keypairs.create(name, key)
+        nc.keypairs.create(name, keydata)
 
     def find_floating_network(self, ):
         nc = self.get_neutron_client()
         networks = nc.list_networks(**{'router:external': True})
         return networks['networks'][0]['id']
 
-    def create_floating_ip(self, record_resource):
+    def create_floating_ip(self):
         nc = self.get_neutron_client()
         floating_network = self.find_floating_network()
         floatingip = {'floating_network_id': floating_network}
         floatingip = nc.create_floatingip({'floatingip': floatingip})
-        record_resource('floatingip', floatingip['floatingip']['id'])
+        self.record_resource('floatingip', floatingip['floatingip']['id'])
         return (floatingip['floatingip']['id'],
                 floatingip['floatingip']['floating_ip_address'])
 
@@ -230,26 +234,26 @@ class DeploymentRunner(object):
         nc = self.get_neutron_client()
         nc.update_floatingip(fip_id, {'floatingip': {'port_id': port_id}})
 
-    def create_network(self, name, info, record_resource):
+    def create_network(self, name, info):
         nc = self.get_neutron_client()
         network = {'name': name, 'admin_state_up': True}
         network = nc.create_network({'network': network})
-        record_resource('network', network['network']['id'])
+        self.record_resource('network', network['network']['id'])
 
         subnet = {"network_id": network['network']['id'],
                   "ip_version": 4,
                   "cidr": info['cidr'],
                   "name": name}
         subnet = nc.create_subnet({'subnet': subnet})
-        record_resource('subnet', subnet['subnet']['id'])
+        self.record_resource('subnet', subnet['subnet']['id'])
 
         return network['network']['id']
 
-    def create_security_group(self, name, info, record_resource):
+    def create_security_group(self, name, info):
         nc = self.get_neutron_client()
         secgroup = {'name': name}
         secgroup = nc.create_security_group({'security_group': secgroup})
-        record_resource('secgroup', secgroup['security_group']['id'])
+        self.record_resource('secgroup', secgroup['security_group']['id'])
 
         for rule in (info or []):
             secgroup_rule = {"direction": "ingress",
@@ -260,25 +264,24 @@ class DeploymentRunner(object):
                              "protocol": rule['protocol'],
                              "security_group_id": secgroup['security_group']['id']}
             secgroup_rule = nc.create_security_group_rule({'security_group_rule': secgroup_rule})
-            record_resource('secgroup_rule', secgroup_rule['security_group_rule']['id'])
+            self.record_resource('secgroup_rule', secgroup_rule['security_group_rule']['id'])
         return secgroup['security_group']['id']
 
-    def create_node(self, name, info, mappings, keypair,
-                    userdata, record_resource):
+    def create_node(self, name, info, keypair, userdata):
         nc = self.get_nova_client()
 
-        if info['image'] in mappings.get('images', {}):
-            info['image'] = mappings['images'][info['image']]
+        if info['image'] in self.mappings.get('images', {}):
+            info['image'] = self.mappings['images'][info['image']]
 
-        if info['flavor'] in mappings.get('flavors', {}):
-            info['flavor'] = mappings['flavors'][info['flavor']]
+        if info['flavor'] in self.mappings.get('flavors', {}):
+            info['flavor'] = self.mappings['flavors'][info['flavor']]
 
         image = nc.images.get(info['image'])
         flavor = nc.flavors.get(info['flavor'])
 
         def _map_network(network):
-            if network in mappings.get('networks', {}):
-                netid = mappings['networks'][network]
+            if network in self.mappings.get('networks', {}):
+                netid = self.mappings['networks'][network]
             elif network in self.networks:
                 netid = self.networks[network]
             else:
@@ -291,10 +294,10 @@ class DeploymentRunner(object):
            port_name = '%s_eth%d' % (name, eth_idx)
            port_id = self.create_port(port_name, _map_network(network['network']),
                                       [self.secgroups[secgroup] for secgroup in network.get('secgroups', [])])
-           record_resource('port', port_id)
+           self.record_resource('port', port_id)
 
            if network.get('assign_floating_ip', False):
-               fip_id, fip_address = self.create_floating_ip(record_resource)
+               fip_id, fip_address = self.create_floating_ip()
                self.associate_floating_ip(port_id, fip_id)
            else:
                fip_address = None
@@ -311,10 +314,10 @@ class DeploymentRunner(object):
                                    block_device_mapping_v2=bdm,
                                    flavor=flavor, nics=nics,
                                    key_name=keypair, userdata=userdata)
-        record_resource('server', server.id)
+        self.record_resource('server', server.id)
         return server.id, fip_address
 
-    def shell_step(self, details, environment=None, args=None, mappings=None):
+    def shell_step(self, details, environment=None):
         env_prefix = 'ALL_NODES=%s' % pipes.quote(' '.join([self.add_prefix(s) for s in self.nodes.keys()]))
 
         cmd = self.shell_step_cmd(details, env_prefix)
@@ -381,21 +384,13 @@ class DeploymentRunner(object):
         else:
             return s
 
-    def provision_step(self, details, args, mappings):
+    def provision_step(self, details):
         stack = load_yaml(details['stack'])
 
-        if args.cleanup:
-            cleanup = open(args.cleanup, 'a+')
-            def record_resource(type_, id):
-                cleanup.write('%s: %s\n' % (type_, id))
-        else:
-            def record_resource(type_, id):
-                pass
-
-        if args.key:
+        if self.key:
             keypair_name = self.add_prefix('pubkey')
-            self.create_keypair(keypair_name, args.key)
-            record_resource('keypair', keypair_name)
+            self.create_keypair(keypair_name, self.key)
+            self.record_resource('keypair', keypair_name)
         else:
             keypair_name = None
 
@@ -408,23 +403,19 @@ class DeploymentRunner(object):
         for base_network_name, network_info in stack['networks'].items():
             network_name = self.add_prefix(base_network_name)
             self.networks[base_network_name] = self.create_network(network_name,
-                                                                   network_info,
-                                                                   record_resource)
+                                                                   network_info)
 
         for base_secgroup_name, secgroup_info in stack['securitygroups'].items():
             secgroup_name = self.add_prefix(base_secgroup_name)
             self.secgroups[base_secgroup_name] = self.create_security_group(secgroup_name,
-                                                                            secgroup_info,
-                                                                            record_resource)
+                                                                            secgroup_info)
 
         for base_node_name, node_info in stack['nodes'].items():
             def _create_node(base_name):
                 node_name = self.add_prefix(base_name)
                 self.nodes[base_name] = self.create_node(node_name, node_info,
-                                                         mappings=mappings,
                                                          keypair=keypair_name,
-                                                         userdata=userdata,
-                                                         record_resource=record_resource)
+                                                         userdata=userdata)
 
             if 'number' in node_info:
                 count = node_info.pop('number')
@@ -433,39 +424,54 @@ class DeploymentRunner(object):
             else:
                 _create_node(base_node_name)
 
-
-    def deploy(self, args, stdout=sys.stdout):
-        self.prefix = args.prefix
-        cfg = load_yaml(args.cfg)
-        if args.mappings:
-            mappings = load_mappings(args.mappings)
-        else:
-            mappings = {'images': {},
-                        'networks': {},
-                        'flavors': {}}
-        for step in cfg[args.name]:
+    def deploy(self, name):
+        for step in self.cfg[name]:
             step_type = step.keys()[0]
             details = step[step_type]
             func = getattr(self, '%s_step' % step_type)
-            func(details, args=args, mappings=mappings)
+            func(details)
 
-    def cleanup(self, args, stdout=sys.stdout):
+
+def main(argv=sys.argv[1:], stdout=sys.stdout):
+    def deploy(args):
+        cfg = load_yaml(args.cfg)
+
+        if args.key:
+            with open(args.key, 'r') as fp:
+                key = fp.read()
+
+
+        dr = DeploymentRunner(config=cfg,
+                              prefix=args.prefix,
+                              mappings=load_mappings(args.mappings),
+                              key=key)
+
+        if args.cleanup:
+            with open(args.cleanup, 'a+') as cleanup:
+                def record_resource(type_, id):
+                    cleanup.write('%s: %s\n' % (type_, id))
+                dr.record_resource = record_resource
+
+                dr.deploy(args.name)
+        else:
+            dr.deploy(args.name)
+
+    def cleanup(args):
+        dr = DeploymentRunner()
+
         with open(args.log, 'r') as fp:
             lines = [l.strip() for l in fp]
 
         lines.reverse()
         for l in lines:
             resource_type, uuid = l.split(': ')
-            func = getattr(self, 'delete_%s' % resource_type)
+            func = getattr(dr, 'delete_%s' % resource_type)
             try:
                 func(uuid)
-            except:
-                pass
+            except Exception, e:
+                print e
 
 
-
-def main(argv=sys.argv[1:], stdout=sys.stdout):
-    dr = DeploymentRunner()
 
     parser = argparse.ArgumentParser(description='Run deployment')
 
@@ -478,7 +484,7 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
     list_refs_parser.add_argument('stack', help='YAML file describing stack')
 
     deploy_parser = subparsers.add_parser('deploy', help='Perform deployment')
-    deploy_parser.set_defaults(func=dr.deploy)
+    deploy_parser.set_defaults(func=deploy)
     deploy_parser.add_argument('--cfg', default='.overcast.yaml',
                                help='Deployment config file')
     deploy_parser.add_argument('--prefix', help='Resource name prefix')
@@ -488,7 +494,7 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
     deploy_parser.add_argument('name', help='Deployment to perform')
 
     cleanup_parser = subparsers.add_parser('cleanup', help='Clean up')
-    cleanup_parser.set_defaults(func=dr.cleanup)
+    cleanup_parser.set_defaults(func=cleanup)
     cleanup_parser.add_argument('log', help='Clean up log (generated by deploy)')
 
     args = parser.parse_args(argv)

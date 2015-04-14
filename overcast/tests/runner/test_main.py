@@ -195,8 +195,7 @@ class MainTests(unittest.TestCase):
         nc.create_floatingip.return_value = {'floatingip': {'id': 'theuuid',
                                                             'floating_ip_address': '1.2.3.4'}}
 
-        record_resource = mock.MagicMock()
-        self.assertEquals(self.dr.create_floating_ip(record_resource), ('theuuid', '1.2.3.4'))
+        self.assertEquals(self.dr.create_floating_ip(), ('theuuid', '1.2.3.4'))
 
         nc.create_floatingip.assert_called_once_with({'floatingip': {'floating_network_id': 'netuuid'}})
 
@@ -206,8 +205,8 @@ class MainTests(unittest.TestCase):
         nc.create_network.return_value = {'network': {'id': 'theuuid'}}
         nc.create_subnet.return_value = {'subnet': {'id': 'thesubnetuuid'}}
 
-        record_resource = mock.MagicMock()
-        self.dr.create_network('netname', {'cidr': '10.0.0.0/12'}, record_resource)
+        self.dr.record_resource = mock.MagicMock()
+        self.dr.create_network('netname', {'cidr': '10.0.0.0/12'})
 
         nc.create_network.assert_called_once_with({'network': {'name': 'netname',
                                                                'admin_state_up': True}})
@@ -215,8 +214,8 @@ class MainTests(unittest.TestCase):
                                                              'cidr': '10.0.0.0/12',
                                                              'ip_version': 4,
                                                              'network_id': 'theuuid'}})
-        record_resource.assert_any_call('network', 'theuuid')
-        record_resource.assert_any_call('subnet', 'thesubnetuuid')
+        self.dr.record_resource.assert_any_call('network', 'theuuid')
+        self.dr.record_resource.assert_any_call('subnet', 'thesubnetuuid')
 
     @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
     def test_create_security_group(self, get_neutron_client):
@@ -224,12 +223,11 @@ class MainTests(unittest.TestCase):
         nc.create_security_group.return_value = {'security_group': {'id': 'theuuid'}}
         nc.create_security_group_rule.return_value = {'security_group_rule': {'id': 'theruleuuid'}}
 
-        record_resource = mock.MagicMock()
+        self.dr.record_resource = mock.MagicMock()
         self.dr.create_security_group('secgroupname', [{'cidr': '12.0.0.0/12',
                                                                 'protocol': 'tcp',
                                                                 'from_port': 21,
-                                                                'to_port': 22}],
-                                              record_resource)
+                                                                'to_port': 22}])
 
         nc.create_security_group.assert_called_once_with({'security_group': {'name': 'secgroupname'}})
         nc.create_security_group_rule.assert_called_once_with({'security_group_rule': {'remote_ip_prefix': '12.0.0.0/12',
@@ -239,17 +237,15 @@ class MainTests(unittest.TestCase):
                                                                                        'port_range_max': 22,
                                                                                        'protocol': 'tcp',
                                                                                        'security_group_id': 'theuuid'}})
-        record_resource.assert_any_call('secgroup', 'theuuid')
-        record_resource.assert_any_call('secgroup_rule', 'theruleuuid')
+        self.dr.record_resource.assert_any_call('secgroup', 'theuuid')
+        self.dr.record_resource.assert_any_call('secgroup_rule', 'theruleuuid')
 
     @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
     def test_create_security_group_without_rules(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.create_security_group.return_value = {'security_group': {'id': 'theuuid'}}
 
-        record_resource = mock.MagicMock()
-
-        self.dr.create_security_group('secgroupname', None, record_resource)
+        self.dr.create_security_group('secgroupname', None)
         nc.create_security_group.assert_called_once_with({'security_group': {'name': 'secgroupname'}})
 
     @mock.patch('overcast.runner.DeploymentRunner.create_port')
@@ -257,7 +253,7 @@ class MainTests(unittest.TestCase):
     @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
     def test_create_node(self, get_neutron_client, get_nova_client, create_port):
         nc = get_nova_client.return_value
-        record_resource = mock.MagicMock()
+        self.dr.record_resource = mock.MagicMock()
 
         nc.flavors.get.return_value = 'smallflavorobject'
         nc.images.get.return_value = 'trustyimageobject'
@@ -272,6 +268,10 @@ class MainTests(unittest.TestCase):
 
         self.dr.networks = {'ephemeral': 'theoneIjustcreated'}
         self.dr.secgroups = {}
+        self.dr.mappings = {'networks': {'mapped': 'yes,mapped'},
+                            'images': {'trusty': 'trustyuuid'},
+                            'flavors': {'small': 'smallid'}}
+
         self.dr.create_node('x123_test1',
                                     {'image': 'trusty',
                                      'flavor': 'small',
@@ -279,13 +279,8 @@ class MainTests(unittest.TestCase):
                                      'networks': [{'network': 'mapped'},
                                                   {'network': 'ephemeral', 'assign_floating_ip': True},
                                                   {'network': 'passedthrough'}]},
-                                    mappings={'networks': {'mapped': 'yes,mapped'},
-                                              'images': {'trusty': 'trustyuuid'},
-                                              'flavors': {'small': 'smallid'}},
                                     userdata='foo',
-                                    keypair='x123_key',
-                                    record_resource=record_resource
-                                    )
+                                    keypair='x123_key')
 
         nc.flavors.get.assert_called_with('smallid')
         nc.images.get.assert_called_with('trustyuuid')
@@ -306,10 +301,10 @@ class MainTests(unittest.TestCase):
                                              key_name='x123_key',
                                              flavor='smallflavorobject')
 
-        record_resource.assert_any_call('port', 'nicuuid1')
-        record_resource.assert_any_call('port', 'nicuuid2')
-        record_resource.assert_any_call('port', 'nicuuid3')
-        record_resource.assert_any_call('server', 'serveruuid')
+        self.dr.record_resource.assert_any_call('port', 'nicuuid1')
+        self.dr.record_resource.assert_any_call('port', 'nicuuid2')
+        self.dr.record_resource.assert_any_call('port', 'nicuuid3')
+        self.dr.record_resource.assert_any_call('server', 'serveruuid')
 
     def test_list_refs_human(self):
         self._test_list_refs(False, 'Images:\n  trusty\n\nFlavors:\n  bootstrap\n')
@@ -336,20 +331,14 @@ class MainTests(unittest.TestCase):
     def test_provision_step(self, create_node, create_security_group, create_network):
         create_network.return_value = 'netuuid'
         create_security_group.return_value = 'sguuid'
-        class Args(object):
-            cleanup = None
-            key = None
-            prefix = 'x123'
-
-        args = Args()
         self.dr.prefix = 'x123'
-        self.dr.provision_step({'stack': 'overcast/tests/runner/examplestack1.yaml'}, args, {})
+        self.dr.provision_step({'stack': 'overcast/tests/runner/examplestack1.yaml'})
 
-        create_network.assert_called_with('x123_undercloud', {'cidr': '10.240.292.0/24'}, mock.ANY)
+        create_network.assert_called_with('x123_undercloud', {'cidr': '10.240.292.0/24'})
         create_security_group.assert_called_with('x123_jumphost',
                                                  [{'to_port': 22,
                                                    'cidr': '0.0.0.0/0',
-                                                   'from_port': 22}], mock.ANY)
+                                                   'from_port': 22}])
         create_node.assert_any_call('x123_other',
                                     {'networks': [{'securitygroups': ['jumphost'],
                                                    'network': 'default',
@@ -358,8 +347,6 @@ class MainTests(unittest.TestCase):
                                      'flavor': 'bootstrap',
                                      'image': 'trusty'},
                                     userdata=None,
-                                    mappings={},
-                                    record_resource=mock.ANY,
                                     keypair=None)
         create_node.assert_any_call('x123_bootstrap1',
                                     {'networks': [{'securitygroups': ['jumphost'], 'network': 'default'},
@@ -367,8 +354,6 @@ class MainTests(unittest.TestCase):
                                      'flavor': 'bootstrap',
                                      'image': 'trusty'},
                                     userdata=None,
-                                    mappings={},
-                                    record_resource=mock.ANY,
                                     keypair=None)
         create_node.assert_any_call('x123_bootstrap2',
                                     {'networks': [{'securitygroups': ['jumphost'], 'network': 'default'},
@@ -376,6 +361,4 @@ class MainTests(unittest.TestCase):
                                      'flavor': 'bootstrap',
                                      'image': 'trusty'},
                                     userdata=None,
-                                    mappings={},
-                                    record_resource=mock.ANY,
                                     keypair=None)
