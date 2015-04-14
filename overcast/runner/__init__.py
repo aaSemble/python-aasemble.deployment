@@ -129,10 +129,10 @@ def get_creds_from_env():
     return d
 
 class DeploymentRunner(object):
-    def __init__(self, config=None, prefix=None, mappings=None, key=None,
+    def __init__(self, config=None, suffix=None, mappings=None, key=None,
                  record_resource=None):
         self.cfg = config
-        self.prefix = prefix
+        self.suffix = suffix
         self.mappings = mappings or {}
         self.key = key
         self.record_resource = lambda *args, **kwargs: None
@@ -318,7 +318,7 @@ class DeploymentRunner(object):
         return server.id, fip_address
 
     def shell_step(self, details, environment=None):
-        env_prefix = 'ALL_NODES=%s' % pipes.quote(' '.join([self.add_prefix(s) for s in self.nodes.keys()]))
+        env_prefix = 'ALL_NODES=%s' % pipes.quote(' '.join([self.add_suffix(s) for s in self.nodes.keys()]))
 
         cmd = self.shell_step_cmd(details, env_prefix)
 
@@ -378,9 +378,9 @@ class DeploymentRunner(object):
         else:
              return '%s bash' % (env_prefix,)
 
-    def add_prefix(self, s):
-        if self.prefix:
-            return '%s_%s' % (self.prefix, s)
+    def add_suffix(self, s):
+        if self.suffix:
+            return '%s_%s' % (s, self.suffix)
         else:
             return s
 
@@ -388,7 +388,7 @@ class DeploymentRunner(object):
         stack = load_yaml(details['stack'])
 
         if self.key:
-            keypair_name = self.add_prefix('pubkey')
+            keypair_name = self.add_suffix('pubkey')
             self.create_keypair(keypair_name, self.key)
             self.record_resource('keypair', keypair_name)
         else:
@@ -401,18 +401,18 @@ class DeploymentRunner(object):
             userdata = None
 
         for base_network_name, network_info in stack['networks'].items():
-            network_name = self.add_prefix(base_network_name)
+            network_name = self.add_suffix(base_network_name)
             self.networks[base_network_name] = self.create_network(network_name,
                                                                    network_info)
 
         for base_secgroup_name, secgroup_info in stack['securitygroups'].items():
-            secgroup_name = self.add_prefix(base_secgroup_name)
+            secgroup_name = self.add_suffix(base_secgroup_name)
             self.secgroups[base_secgroup_name] = self.create_security_group(secgroup_name,
                                                                             secgroup_info)
 
         for base_node_name, node_info in stack['nodes'].items():
             def _create_node(base_name):
-                node_name = self.add_prefix(base_name)
+                node_name = self.add_suffix(base_name)
                 self.nodes[base_name] = self.create_node(node_name, node_info,
                                                          keypair=keypair_name,
                                                          userdata=userdata)
@@ -442,7 +442,7 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
 
 
         dr = DeploymentRunner(config=cfg,
-                              prefix=args.prefix,
+                              suffix=args.suffix,
                               mappings=load_mappings(args.mappings),
                               key=key)
 
@@ -487,7 +487,7 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
     deploy_parser.set_defaults(func=deploy)
     deploy_parser.add_argument('--cfg', default='.overcast.yaml',
                                help='Deployment config file')
-    deploy_parser.add_argument('--prefix', help='Resource name prefix')
+    deploy_parser.add_argument('--suffix', help='Resource name suffix')
     deploy_parser.add_argument('--mappings', help='Resource map file')
     deploy_parser.add_argument('--key', help='Public key file')
     deploy_parser.add_argument('--cleanup', help='Cleanup file')

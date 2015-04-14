@@ -80,6 +80,6 @@ You'll notice that `flavor` and `image` have human readable names. That's becaus
  
 Let's look at how you actually use all of this.
 
-    $ cd examples; overcast deploy --cfg test.yaml --key ${HOME}/.ssh/id_rsa.pub --mappings jio.ini --prefix test1234 main 
+    $ cd examples; overcast deploy --cfg test.yaml --key ${HOME}/.ssh/id_rsa.pub --mappings jio.ini --suffix test1234 main 
 
 `overcast` expects you to have some environment variables set to be able to authenticate. They are `OS_USERNAME`, `OS_PASSWORD`, `OS_TENANT_NAME`, `OS_AUTH_URL`. Their expected value should be fairly obvious.

@@ -272,7 +272,7 @@ class MainTests(unittest.TestCase):
                             'images': {'trusty': 'trustyuuid'},
                             'flavors': {'small': 'smallid'}}
 
-        self.dr.create_node('x123_test1',
+        self.dr.create_node('test1_x123',
                                     {'image': 'trusty',
                                      'flavor': 'small',
                                      'disk': 10,
@@ -280,12 +280,12 @@ class MainTests(unittest.TestCase):
                                                   {'network': 'ephemeral', 'assign_floating_ip': True},
                                                   {'network': 'passedthrough'}]},
                                     userdata='foo',
-                                    keypair='x123_key')
+                                    keypair='key_x123')
 
         nc.flavors.get.assert_called_with('smallid')
         nc.images.get.assert_called_with('trustyuuid')
 
-        nc.servers.create.assert_called_with('x123_test1',
+        nc.servers.create.assert_called_with('test1_x123',
                                              nics=[{'port-id': 'nicuuid1'},
                                                    {'port-id': 'nicuuid2'},
                                                    {'port-id': 'nicuuid3'}],
@@ -298,7 +298,7 @@ class MainTests(unittest.TestCase):
                                                       'delete_on_termination': 'true'}],
                                              image=None,
                                              userdata='foo',
-                                             key_name='x123_key',
+                                             key_name='key_x123',
                                              flavor='smallflavorobject')
 
         self.dr.record_resource.assert_any_call('port', 'nicuuid1')
@@ -331,15 +331,15 @@ class MainTests(unittest.TestCase):
     def test_provision_step(self, create_node, create_security_group, create_network):
         create_network.return_value = 'netuuid'
         create_security_group.return_value = 'sguuid'
-        self.dr.prefix = 'x123'
+        self.dr.suffix = 'x123'
         self.dr.provision_step({'stack': 'overcast/tests/runner/examplestack1.yaml'})
 
-        create_network.assert_called_with('x123_undercloud', {'cidr': '10.240.292.0/24'})
-        create_security_group.assert_called_with('x123_jumphost',
+        create_network.assert_called_with('undercloud_x123', {'cidr': '10.240.292.0/24'})
+        create_security_group.assert_called_with('jumphost_x123',
                                                  [{'to_port': 22,
                                                    'cidr': '0.0.0.0/0',
                                                    'from_port': 22}])
-        create_node.assert_any_call('x123_other',
+        create_node.assert_any_call('other_x123',
                                     {'networks': [{'securitygroups': ['jumphost'],
                                                    'network': 'default',
                                                    'assign_floating_ip': True},
@@ -348,14 +348,14 @@ class MainTests(unittest.TestCase):
                                      'image': 'trusty'},
                                     userdata=None,
                                     keypair=None)
-        create_node.assert_any_call('x123_bootstrap1',
+        create_node.assert_any_call('bootstrap1_x123',
                                     {'networks': [{'securitygroups': ['jumphost'], 'network': 'default'},
                                                   {'network': 'undercloud'}],
                                      'flavor': 'bootstrap',
                                      'image': 'trusty'},
                                     userdata=None,
                                     keypair=None)
-        create_node.assert_any_call('x123_bootstrap2',
+        create_node.assert_any_call('bootstrap2_x123',
                                     {'networks': [{'securitygroups': ['jumphost'], 'network': 'default'},
                                                   {'network': 'undercloud'}],
                                      'flavor': 'bootstrap',
