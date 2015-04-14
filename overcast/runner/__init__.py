@@ -51,7 +51,7 @@ def find_weak_refs(stack):
     for node_name, node in stack['nodes'].items():
         images.add(node['image'])
         flavors.add(node['flavor'])
-        networks.update([n['network'] for n in node['nics']])
+        networks.update([n['network'] for n in node['networks']])
 
     dynamic_networks = set()
     for network_name, network in stack.get('networks', {}).items():
