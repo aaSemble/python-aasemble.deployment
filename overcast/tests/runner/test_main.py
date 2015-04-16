@@ -177,6 +177,178 @@ class MainTests(unittest.TestCase):
         self.assertEquals(side_effects, [])
 
     @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
+    @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
+    def test_detect_existing_resources_network_conflict(self, get_nova_client, get_neutron_client):
+        neutron = get_neutron_client.return_value
+        nova = get_nova_client.return_value
+
+        neutron.list_networks.return_value = {'networks': [{'name': 'somename',
+                                                            'id': 'uuid1'},
+                                                           {'name': 'somename',
+                                                            'id': 'uuid2'}]}
+
+        neutron.list_security_groups.return_value = {'security_groups': []}
+        nova.servers.list.return_value = []
+
+        self.assertRaises(overcast.exceptions.DuplicateResourceException,
+                          self.dr.detect_existing_resources)
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
+    @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
+    def test_detect_existing_resources_network_conflict_in_other_suffix(self, get_nova_client, get_neutron_client):
+        neutron = get_neutron_client.return_value
+        nova = get_nova_client.return_value
+
+        neutron.list_networks.return_value = {'networks': [{'name': 'somename_foo',
+                                                            'id': 'uuid1'},
+                                                           {'name': 'somename_foo',
+                                                            'id': 'uuid2'}]}
+
+        neutron.list_security_groups.return_value = {'security_groups': []}
+        nova.servers.list.return_value = []
+
+        self.dr.suffix = 'bar'
+        self.dr.detect_existing_resources()
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
+    @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
+    def test_detect_existing_resources_secgroup_conflict(self, get_nova_client, get_neutron_client):
+        neutron = get_neutron_client.return_value
+        nova = get_nova_client.return_value
+
+        neutron.list_networks.return_value = {'networks': []}
+        neutron.list_security_groups.return_value = {'security_groups':
+                                                          [{'name': 'somename',
+                                                            'id': 'uuid1'},
+                                                           {'name': 'somename',
+                                                            'id': 'uuid2'}]}
+
+        nova.servers.list.return_value = []
+
+        self.assertRaises(overcast.exceptions.DuplicateResourceException,
+                          self.dr.detect_existing_resources)
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
+    @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
+    def test_detect_existing_resources_secgroup_conflict_in_other_suffix(self, get_nova_client, get_neutron_client):
+        neutron = get_neutron_client.return_value
+        nova = get_nova_client.return_value
+
+        neutron.list_networks.return_value = {'networks': []}
+        neutron.list_security_groups.return_value = {'security_groups':
+                                                          [{'name': 'somename_foo',
+                                                            'id': 'uuid1'},
+                                                           {'name': 'somename_foo',
+                                                            'id': 'uuid2'}]}
+        nova.servers.list.return_value = []
+
+        self.dr.suffix = 'bar'
+        self.dr.detect_existing_resources()
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
+    @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
+    def test_detect_existing_resources_server_conflict(self, get_nova_client, get_neutron_client):
+        neutron = get_neutron_client.return_value
+        nova = get_nova_client.return_value
+
+        class Server(object):
+            def __init__(self, name, id):
+                self.name = name
+                self.id = id
+
+        neutron.list_networks.return_value = {'networks': []}
+        neutron.list_security_groups.return_value = {'security_groups': []}
+        nova.servers.list.return_value = [Server('server1', 'uuid1'),
+                                          Server('server1', 'uuid2')]
+
+        self.assertRaises(overcast.exceptions.DuplicateResourceException,
+                          self.dr.detect_existing_resources)
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
+    @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
+    def test_detect_existing_resources_server_conflict_in_other_suffix(self, get_nova_client, get_neutron_client):
+        neutron = get_neutron_client.return_value
+        nova = get_nova_client.return_value
+
+        class Server(object):
+            def __init__(self, name, id):
+                self.name = name
+                self.id = id
+
+        neutron.list_networks.return_value = {'networks': []}
+        neutron.list_security_groups.return_value = {'security_groups': []}
+        nova.servers.list.return_value = [Server('server1_foo', 'uuid1'),
+                                          Server('server1_foo', 'uuid2')]
+
+        self.dr.suffix = 'bar'
+        self.dr.detect_existing_resources()
+
+    def test_detect_existing_resources_no_suffix(self):
+        self._test_detect_existing_resources(None,
+                                             {'other': '98765432-e3c0-41a5-880d-ebeb6b1ded5e',
+                                              'default_mysuffix': '12345678-e3c0-41a5-880d-ebeb6b1ded5e'},
+                                             {'testnet': '123123123-524c-406b-b7c1-9bc069251d22',
+                                              'testnet2_mysuffix': '123123123-524c-406b-b7c1-987665441d22'},
+                                             {'server1_mysuffix': 'server1_mysuffixuuid',
+                                              'server1': 'server1uuid'})
+
+    def test_detect_existing_resources_with_suffix(self):
+        self._test_detect_existing_resources('mysuffix',
+                                             {'default': '12345678-e3c0-41a5-880d-ebeb6b1ded5e'},
+                                             {'testnet2': '123123123-524c-406b-b7c1-987665441d22'},
+                                             {'server1': 'server1_mysuffixuuid'})
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
+    @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
+    def _test_detect_existing_resources(self, suffix, expected_secgroups, expected_networks, expected_nodes,
+                                        get_nova_client, get_neutron_client):
+        neutron = get_neutron_client.return_value
+        neutron.list_networks.return_value = {'networks': [{'status': 'ACTIVE',
+                                                            'router:external': False,
+                                                            'subnets': ['12345678-acab-4949-b06b-b095f9a6ca8c'],
+                                                            'name': 'testnet',
+                                                            'admin_state_up': True,
+                                                            'tenant_id': '987654331abcdef98765431',
+                                                            'shared': False,
+                                                            'id': '123123123-524c-406b-b7c1-9bc069251d22'},
+                                                           {'status': 'ACTIVE',
+                                                            'router:external': False,
+                                                            'subnets': ['98766544-acab-4949-b06b-b095f9a6ca8c'],
+                                                            'name': 'testnet2_mysuffix',
+                                                            'admin_state_up': True,
+                                                            'tenant_id': '987654331abcdef98765431',
+                                                            'shared': False,
+                                                            'id': '123123123-524c-406b-b7c1-987665441d22'}]}
+
+        neutron.list_security_groups.return_value = {'security_groups': [{'id': '98765432-e3c0-41a5-880d-ebeb6b1ded5e',
+                                                                          'tenant_id': '987654331abcdef98765431',
+                                                                          'description': None,
+                                                                          'security_group_rules': [],
+                                                                          'name': 'other'},
+                                                                         {'id': '12345678-e3c0-41a5-880d-ebeb6b1ded5e',
+                                                                          'tenant_id': '987654331abcdef98765431',
+                                                                          'description': None,
+                                                                          'security_group_rules': [],
+                                                                          'name': 'default_mysuffix'}]}
+        nova = get_nova_client.return_value
+
+        class Server(object):
+            def __init__(self, name, id):
+                self.name = name
+                self.id = id
+
+        nova.servers.list.return_value = [Server('server1', 'server1uuid'),
+                                          Server('server1_mysuffix', 'server1_mysuffixuuid')]
+
+        self.dr.suffix = suffix
+        self.dr.detect_existing_resources()
+
+        self.assertEquals(self.dr.secgroups, expected_secgroups)
+        self.assertEquals(self.dr.networks, expected_networks)
+        self.assertEquals(self.dr.nodes, expected_nodes)
+
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
     def test_find_floating_network(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.list_networks.return_value = {'networks': [{'id': 'netuuid'}]}

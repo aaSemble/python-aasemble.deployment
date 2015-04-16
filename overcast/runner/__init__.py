@@ -25,6 +25,8 @@ import sys
 import time
 import yaml
 
+from novaclient.exceptions import Conflict
+
 from overcast import utils
 from overcast import exceptions
 
@@ -171,6 +173,41 @@ class DeploymentRunner(object):
             self.conncache['neutron'] = neutronclient.Client('2.0', session=ks)
         return self.conncache['neutron']
 
+    def detect_existing_resources(self):
+        neutron = self.get_neutron_client()
+
+        suffix = self.add_suffix('')
+        if suffix:
+            strip_suffix = lambda s:s[:-len(suffix)]
+        else:
+            strip_suffix = lambda s:s
+
+        for network in neutron.list_networks()['networks']:
+            if network['name'].endswith(suffix):
+                base_name = strip_suffix(network['name'])
+                if base_name in self.networks:
+                    raise exceptions.DuplicateResourceException('Network', network['name'])
+
+                self.networks[base_name] = network['id']
+
+        for secgroup in neutron.list_security_groups()['security_groups']:
+            if secgroup['name'].endswith(suffix):
+                base_name = strip_suffix(secgroup['name'])
+                if base_name in self.secgroups:
+                    raise exceptions.DuplicateResourceException('Security Group', secgroup['name'])
+
+                self.secgroups[base_name] = secgroup['id']
+
+        nova = self.get_nova_client()
+
+        for node in nova.servers.list():
+            if node.name.endswith(suffix):
+                base_name = strip_suffix(node.name)
+                if base_name in self.nodes:
+                    raise exceptions.DuplicateResourceException('Node', node.name)
+
+                self.nodes[base_name] = node.id
+
     def delete_port(self, uuid):
         nc = self.get_neutron_client()
         nc.delete_port(uuid)
@@ -214,7 +251,10 @@ class DeploymentRunner(object):
 
     def create_keypair(self, name, keydata):
         nc = self.get_nova_client()
-        nc.keypairs.create(name, keydata)
+        try:
+            nc.keypairs.create(name, keydata)
+        except Conflict:
+            pass
 
     def find_floating_network(self, ):
         nc = self.get_neutron_client()
@@ -401,16 +441,22 @@ class DeploymentRunner(object):
             userdata = None
 
         for base_network_name, network_info in stack['networks'].items():
+            if base_network_name in self.networks:
+                continue
             network_name = self.add_suffix(base_network_name)
             self.networks[base_network_name] = self.create_network(network_name,
                                                                    network_info)
 
         for base_secgroup_name, secgroup_info in stack['securitygroups'].items():
+            if base_secgroup_name in self.secgroups:
+                continue
             secgroup_name = self.add_suffix(base_secgroup_name)
             self.secgroups[base_secgroup_name] = self.create_security_group(secgroup_name,
                                                                             secgroup_info)
 
         for base_node_name, node_info in stack['nodes'].items():
+            if base_node_name in self.nodes:
+                continue
             def _create_node(base_name):
                 node_name = self.add_suffix(base_name)
                 self.nodes[base_name] = self.create_node(node_name, node_info,
@@ -446,6 +492,9 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
                               mappings=load_mappings(args.mappings),
                               key=key)
 
+        if args.cont:
+            dr.detect_existing_resources()
+
         if args.cleanup:
             with open(args.cleanup, 'a+') as cleanup:
                 def record_resource(type_, id):
@@ -471,8 +520,6 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
             except Exception, e:
                 print e
 
-
-
     parser = argparse.ArgumentParser(description='Run deployment')
 
     subparsers = parser.add_subparsers(help='Subcommand help')
@@ -491,6 +538,8 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
     deploy_parser.add_argument('--mappings', help='Resource map file')
     deploy_parser.add_argument('--key', help='Public key file')
     deploy_parser.add_argument('--cleanup', help='Cleanup file')
+    deploy_parser.add_argument('--incremental', dest='cont', action='store_true',
+                               help="Don't create resources if identically named ones already exist")
     deploy_parser.add_argument('name', help='Deployment to perform')
 
     cleanup_parser = subparsers.add_parser('cleanup', help='Clean up')

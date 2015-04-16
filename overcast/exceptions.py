@@ -24,3 +24,6 @@ class CommandTimedOutException(OvercastException):
 
 class CommandFailedException(OvercastException):
     pass
+
+class DuplicateResourceException(OvercastException):
+    pass
