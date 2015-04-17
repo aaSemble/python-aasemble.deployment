@@ -176,6 +176,18 @@ class DeploymentRunner(object):
     def detect_existing_resources(self):
         neutron = self.get_neutron_client()
 
+        instance_fip = {}
+
+        ports = {port['id']: port for port in neutron.list_ports()['ports']}
+
+        for fip in neutron.list_floatingips()['floatingips']:
+            port_id = fip['port_id']
+            if not port_id:
+                continue
+            port = ports[port_id]
+            device_id = port['device_id']
+            instance_fip[device_id] = fip['floating_ip_address']
+
         suffix = self.add_suffix('')
         if suffix:
             strip_suffix = lambda s:s[:-len(suffix)]
@@ -206,7 +218,7 @@ class DeploymentRunner(object):
                 if base_name in self.nodes:
                     raise exceptions.DuplicateResourceException('Node', node.name)
 
-                self.nodes[base_name] = node.id
+                self.nodes[base_name] = (node.id, instance_fip.get(node.id))
 
     def delete_port(self, uuid):
         nc = self.get_neutron_client()
@@ -455,9 +467,9 @@ class DeploymentRunner(object):
                                                                             secgroup_info)
 
         for base_node_name, node_info in stack['nodes'].items():
-            if base_node_name in self.nodes:
-                continue
             def _create_node(base_name):
+                if base_name in self.nodes:
+                    return
                 node_name = self.add_suffix(base_name)
                 self.nodes[base_name] = self.create_node(node_name, node_info,
                                                          keypair=keypair_name,
