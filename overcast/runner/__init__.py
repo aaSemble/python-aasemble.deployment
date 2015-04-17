@@ -370,7 +370,18 @@ class DeploymentRunner(object):
         return server.id, fip_address
 
     def shell_step(self, details, environment=None):
-        env_prefix = 'ALL_NODES=%s' % pipes.quote(' '.join([self.add_suffix(s) for s in self.nodes.keys()]))
+        env_prefix = ''
+        def add_environment(key, value):
+            return '%s=%s ' % (pipes.quote(key), pipes.quote(value))
+
+        env_prefix += add_environment('ALL_NODES',
+                                      ' '.join([self.add_suffix(s) for s in self.nodes.keys()]))
+
+        if 'environment' in details:
+            for key, value in details['environment'].items():
+                if value.startswith('$'):
+                    value = os.environ.get(value[1:])
+                env_prefix += add_environment(key, value)
 
         cmd = self.shell_step_cmd(details, env_prefix)
 
