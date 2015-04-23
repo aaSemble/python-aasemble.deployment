@@ -289,14 +289,13 @@ class MainTests(unittest.TestCase):
                                               'default_mysuffix': '12345678-e3c0-41a5-880d-ebeb6b1ded5e'},
                                              {'testnet': '123123123-524c-406b-b7c1-9bc069251d22',
                                               'testnet2_mysuffix': '123123123-524c-406b-b7c1-987665441d22'},
-                                             {'server1_mysuffix': 'server1_mysuffixuuid',
-                                              'server1': 'server1uuid'})
+                                             ['server1_mysuffix', 'server1'])
 
     def test_detect_existing_resources_with_suffix(self):
         self._test_detect_existing_resources('mysuffix',
                                              {'default': '12345678-e3c0-41a5-880d-ebeb6b1ded5e'},
                                              {'testnet2': '123123123-524c-406b-b7c1-987665441d22'},
-                                             {'server1': 'server1_mysuffixuuid'})
+                                             ['server1'])
 
     @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
     @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
@@ -345,7 +344,8 @@ class MainTests(unittest.TestCase):
 
         self.assertEquals(self.dr.secgroups, expected_secgroups)
         self.assertEquals(self.dr.networks, expected_networks)
-        self.assertEquals(self.dr.nodes, expected_nodes)
+        for node in expected_nodes:
+            self.assertIn(node, self.dr.nodes)
 
 
     @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
@@ -444,7 +444,7 @@ class MainTests(unittest.TestCase):
                             'images': {'trusty': 'trustyuuid'},
                             'flavors': {'small': 'smallid'}}
 
-        self.dr.create_node('test1_x123',
+        node = overcast.runner.Node('test1_x123',
                                     {'image': 'trusty',
                                      'flavor': 'small',
                                      'disk': 10,
@@ -452,7 +452,9 @@ class MainTests(unittest.TestCase):
                                                   {'network': 'ephemeral', 'assign_floating_ip': True},
                                                   {'network': 'passedthrough'}]},
                                     userdata='foo',
-                                    keypair='key_x123')
+                                    keypair='key_x123',
+                                    runner=self.dr)
+        node.build()
 
         nc.flavors.get.assert_called_with('smallid')
         nc.images.get.assert_called_with('trustyuuid')
@@ -499,11 +501,19 @@ class MainTests(unittest.TestCase):
 
     @mock.patch('overcast.runner.DeploymentRunner.create_network')
     @mock.patch('overcast.runner.DeploymentRunner.create_security_group')
-    @mock.patch('overcast.runner.DeploymentRunner.create_node')
-    def test_provision_step(self, create_node, create_security_group, create_network):
+    @mock.patch('overcast.runner.DeploymentRunner._create_node')
+    @mock.patch('overcast.runner.DeploymentRunner._poll_pending_nodes')
+    @mock.patch('overcast.runner.time')
+    def test_provision_step(self, time, _poll_pending_nodes, _create_node,
+                            create_security_group, create_network):
         create_network.return_value = 'netuuid'
         create_security_group.return_value = 'sguuid'
         self.dr.suffix = 'x123'
+        _poll_pending_nodes.side_effect = [set(['other', 'bootstrap1', 'bootstrap2']),
+                                           set(['bootstrap1', 'bootstrap2']),
+                                           set(['bootstrap1']),
+                                           set()]
+
         self.dr.provision_step({'stack': 'overcast/tests/runner/examplestack1.yaml'})
 
         create_network.assert_called_with('undercloud_x123', {'cidr': '10.240.292.0/24'})
@@ -511,26 +521,31 @@ class MainTests(unittest.TestCase):
                                                  [{'to_port': 22,
                                                    'cidr': '0.0.0.0/0',
                                                    'from_port': 22}])
-        create_node.assert_any_call('other_x123',
-                                    {'networks': [{'securitygroups': ['jumphost'],
-                                                   'network': 'default',
-                                                   'assign_floating_ip': True},
-                                              {'network': 'undercloud'}],
-                                     'flavor': 'bootstrap',
-                                     'image': 'trusty'},
-                                    userdata=None,
-                                    keypair=None)
-        create_node.assert_any_call('bootstrap1_x123',
-                                    {'networks': [{'securitygroups': ['jumphost'], 'network': 'default'},
-                                                  {'network': 'undercloud'}],
-                                     'flavor': 'bootstrap',
-                                     'image': 'trusty'},
-                                    userdata=None,
-                                    keypair=None)
-        create_node.assert_any_call('bootstrap2_x123',
-                                    {'networks': [{'securitygroups': ['jumphost'], 'network': 'default'},
-                                                  {'network': 'undercloud'}],
-                                     'flavor': 'bootstrap',
-                                     'image': 'trusty'},
-                                    userdata=None,
-                                    keypair=None)
+        self.assertEquals(_poll_pending_nodes.mock_calls,
+                          [mock.call(set(['other', 'bootstrap1', 'bootstrap2'])),
+                           mock.call(set(['other', 'bootstrap1', 'bootstrap2'])),
+                           mock.call(set(['bootstrap1', 'bootstrap2'])),
+                           mock.call(set(['bootstrap1']))])
+        _create_node.assert_any_call('other',
+                                     {'networks': [{'securitygroups': ['jumphost'],
+                                                    'network': 'default',
+                                                    'assign_floating_ip': True},
+                                               {'network': 'undercloud'}],
+                                      'flavor': 'bootstrap',
+                                      'image': 'trusty'},
+                                     userdata=None,
+                                     keypair_name=None)
+        _create_node.assert_any_call('bootstrap1',
+                                     {'networks': [{'securitygroups': ['jumphost'], 'network': 'default'},
+                                                   {'network': 'undercloud'}],
+                                      'flavor': 'bootstrap',
+                                      'image': 'trusty'},
+                                     userdata=None,
+                                     keypair_name=None)
+        _create_node.assert_any_call('bootstrap2',
+                                     {'networks': [{'securitygroups': ['jumphost'], 'network': 'default'},
+                                                   {'network': 'undercloud'}],
+                                      'flavor': 'bootstrap',
+                                      'image': 'trusty'},
+                                     userdata=None,
+                                     keypair_name=None)

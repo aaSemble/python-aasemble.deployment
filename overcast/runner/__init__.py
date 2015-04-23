@@ -132,8 +132,7 @@ def get_creds_from_env():
 
 
 class Node(object):
-
-    def __init__(self, name, info, keypair, userdata, runner):
+    def __init__(self, name, info, runner, keypair=None, userdata=None):
         self.record_resource = lambda *args, **kwargs: None
         self.name = name
         self.info = info
@@ -146,13 +145,14 @@ class Node(object):
         self.fip_addresses = set()
         self.server_status = None
         self.nc = self.runner.get_nova_client()
-        if self.info['image'] in self.runner.mappings.get('images', {}):
+        self.image = None
+        self.flavor = None
+
+        if self.info.get('image') in self.runner.mappings.get('images', {}):
             self.info['image'] = self.runner.mappings['images'][self.info['image']]
 
-        if self.info['flavor'] in self.runner.mappings.get('flavors', {}):
+        if self.info.get('flavor') in self.runner.mappings.get('flavors', {}):
             self.info['flavor'] = self.runner.mappings['flavors'][self.info['flavor']]
-        self.image = self.nc.images.get(self.info['image'])
-        self.flavor = self.nc.flavors.get(self.info['flavor'])
 
     def poll(self, desired_status = 'ACTIVE'):
         """
@@ -182,6 +182,10 @@ class Node(object):
         self.server_id = None
 
     def build(self):
+        if self.image is None:
+            self.image = self.nc.images.get(self.info['image'])
+        if self.flavor is None:
+            self.flavor = self.nc.flavors.get(self.info['flavor'])
 
         def _map_network(network):
             if network in self.runner.mappings.get('networks', {}):
@@ -310,7 +314,9 @@ class DeploymentRunner(object):
                 if base_name in self.nodes:
                     raise exceptions.DuplicateResourceException('Node', node.name)
 
-                self.nodes[base_name] = (node.id, instance_fip.get(node.id))
+                self.nodes[base_name] = Node(node.name, {}, self)
+                if node.id in instance_fip:
+                    self.nodes[base_name].fip_addresses = set([instance_fip[node.id]])
 
     def delete_port(self, uuid):
         nc = self.get_neutron_client()
@@ -478,10 +484,8 @@ class DeploymentRunner(object):
 
     def shell_step_cmd(self, details, env_prefix=''):
         if details.get('type', None) == 'remote':
-            for fip_addr in self.nodes[details['node']].fip_addresses:
-                node = fip_addr
-                break
-            return 'ssh -o StrictHostKeyChecking=no ubuntu@%s "%s bash"' % (node, env_prefix)
+            for fip_addr in self.nodes[details['node']].fip_addresses: break
+            return 'ssh -o StrictHostKeyChecking=no ubuntu@%s "%s bash"' % (fip_addr, env_prefix)
         else:
              return '%s bash' % (env_prefix,)
 
@@ -539,43 +543,51 @@ class DeploymentRunner(object):
                                                                             secgroup_info)
 
         for base_node_name, node_info in stack['nodes'].items():
-            def _create_node(base_name):
-                if base_name in self.nodes:
-                    return
-                node_name = self.add_suffix(base_name)
-                self.nodes[base_name] = Node(node_name, node_info,
-                                                        keypair=keypair_name,
-                                                        userdata=userdata,
-                                                        runner=self)
-                self.nodes[base_name].build()
-
             if 'number' in node_info:
                 count = node_info.pop('number')
                 for idx in range(1, count+1):
                     node_name = '%s%d' % (base_node_name, idx)
-                    _create_node(node_name)
+                    self._create_node(node_name, node_info,
+                                      keypair_name=keypair_name, userdata=userdata)
                     pending_nodes.add(node_name)
             else:
-                _create_node(base_node_name)
+                self._create_node(base_node_name, node_info,
+                                  keypair_name=keypair_name, userdata=userdata)
                 pending_nodes.add(base_node_name)
 
         while True:
-            done = set()
-            for name in pending_nodes:
-                if self.nodes[name].poll() == 'ACTIVE':
-                    done.add(name)
-                if self.nodes[name].poll() == 'ERROR':
-                    if details.get('retry-if-fails', False):
-                        wait()
-                        if deadline and time.time() > deadline:
-                            raise exceptions.ProvisionTimedOutException()
-                        self.nodes[name].clean()
-                        self.nodes[name].build()
-                    raise exceptions.ProvisionFailedException()
-            pending_nodes = pending_nodes.difference(done)
+            pending_nodes = self._poll_pending_nodes(pending_nodes)
             if not pending_nodes:
                 break
-            time.sleep(5)
+            wait()
+
+    def _create_node(self, base_name, node_info, keypair_name, userdata):
+        if base_name in self.nodes:
+            return
+        node_name = self.add_suffix(base_name)
+        self.nodes[base_name] = Node(node_name, node_info,
+                                     runner=self,
+                                     keypair=keypair_name,
+                                     userdata=userdata)
+        self.nodes[base_name].build()
+
+
+    def _poll_pending_nodes(self, pending_nodes):
+        done = set()
+        for name in pending_nodes:
+            state = self.nodes[name].poll()
+            if state == 'ACTIVE':
+                done.add(name)
+            elif state == 'ERROR':
+                if details.get('retry-if-fails', False):
+                    wait()
+                    if deadline and time.time() > deadline:
+                        raise exceptions.ProvisionTimedOutException()
+                    self.nodes[name].clean()
+                    self.nodes[name].build()
+                raise exceptions.ProvisionFailedException()
+        return pending_nodes.difference(done)
+
 
     def deploy(self, name):
         for step in self.cfg[name]:
@@ -645,6 +657,7 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
     deploy_parser.add_argument('--mappings', help='Resource map file')
     deploy_parser.add_argument('--key', help='Public key file')
     deploy_parser.add_argument('--cleanup', help='Cleanup file')
+    deploy_parser.add_argument('--retry-count', type=int, help='Retry RETRY-COUNT times before giving up provisioning a VM')
     deploy_parser.add_argument('--incremental', dest='cont', action='store_true',
                                help="Don't create resources if identically named ones already exist")
     deploy_parser.add_argument('name', help='Deployment to perform')
