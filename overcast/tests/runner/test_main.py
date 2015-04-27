@@ -38,6 +38,78 @@ common = b2b2f6a6-228f-4d42-b4f7-0d340b3390e7
 small = 34fb3740-d158-472c-8520-017278c75008
 '''
 
+class NodeTests(unittest.TestCase):
+    def setUp(self):
+        self.dr = overcast.runner.DeploymentRunner()
+        self.node = overcast.runner.Node('name', {}, self.dr)
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
+    def test_poll(self, get_nova_client):
+        nc = get_nova_client.return_value
+        self.node.server_id = 'someuuid'
+
+        nc.servers.get.return_value.status = 'ACTIVE'
+        self.node.poll()
+
+        nc.servers.get.assert_called_with('someuuid')
+        self.assertEquals(len(nc.servers.get.mock_calls), 1)
+
+        self.node.poll()
+        self.assertEquals(len(nc.servers.get.mock_calls), 1,
+                          'server.get() was called even though expected '
+                          'state already reached')
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
+    def test_build(self, get_neutron_client, get_nova_client):
+        self.node.info['image'] = 'someimage'
+        self.node.info['flavor'] = 'someflavor'
+        self.node.info['disk'] = 10
+        self.node.info['networks'] = [{'network': 'netuuid',
+                                       'secgroups': ['sg1']}]
+        self.dr.secgroups['sg1'] = 'sg1uuid'
+
+        novaclient = get_nova_client.return_value
+        novaclient.flavors.get.return_value = 'flavor_obj'
+        neutronclient = get_neutron_client.return_value
+
+        self.node.build()
+
+        novaclient.images.get.assert_called_with('someimage')
+        novaclient.flavors.get.assert_called_with('someflavor')
+
+        novaclient.servers.create.assert_called_with('name', userdata=None,
+                                                     nics=[{'port-id': mock.ANY}], image=None,
+                                                     block_device_mapping_v2=[{'boot_index': '0',
+                                                                               'uuid': 'someimage',
+                                                                               'volume_size': 10,
+                                                                               'source_type': 'image',
+                                                                               'destination_type': 'volume',
+                                                                               'delete_on_termination': 'true'}],
+                                                     key_name=None, flavor='flavor_obj')
+
+    @mock.patch('overcast.runner.DeploymentRunner.delete_server')
+    @mock.patch('overcast.runner.DeploymentRunner.delete_port')
+    @mock.patch('overcast.runner.DeploymentRunner.delete_floatingip')
+    def test_clean(self, delete_floatingip, delete_port, delete_server):
+        self.node.fip_ids = set(['fipuuid1', 'fipuuid2'])
+        self.node.port_ids = set(['portuuid1', 'portuuid2'])
+        self.node.server_id = 'serveruuid'
+
+        self.node.clean()
+
+        delete_floatingip.assert_any_call('fipuuid1')
+        delete_floatingip.assert_any_call('fipuuid2')
+        self.assertEquals(self.node.fip_ids, set())
+
+        delete_port.assert_any_call('portuuid1')
+        delete_port.assert_any_call('portuuid2')
+        self.assertEquals(self.node.port_ids, set())
+        
+        delete_server.assert_any_call('serveruuid')
+        self.assertEquals(self.node.server_id, None)
+
+
 class MainTests(unittest.TestCase):
     def setUp(self):
         self.dr = overcast.runner.DeploymentRunner()
@@ -549,3 +621,50 @@ class MainTests(unittest.TestCase):
                                       'image': 'trusty'},
                                      userdata=None,
                                      keypair_name=None)
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
+    def test_delete_server(self, get_nova_client):
+        nc = get_nova_client.return_value
+
+        self.dr.delete_server('someuuid')
+
+        nc.servers.delete.assert_called_with('someuuid')
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
+    def test_delete_keypair(self, get_nova_client):
+        nc = get_nova_client.return_value
+
+        self.dr.delete_keypair('somename')
+
+        nc.keypairs.delete.assert_called_with('somename')
+
+    def test_delete_floatingip(self):
+        self._test_delete_neutron_resource('floatingip')
+
+    def test_delete_network(self):
+        self._test_delete_neutron_resource('network')
+
+    def test_delete_port(self):
+        self._test_delete_neutron_resource('port')
+
+    def test_delete_subnet(self):
+        self._test_delete_neutron_resource('subnet')
+
+    def test_delete_secgroup(self):
+        self._test_delete_neutron_resource('secgroup',
+                                           neutron_type='security_group')
+
+    def test_delete_secgroup_rule(self):
+        self._test_delete_neutron_resource('secgroup_rule',
+                                           neutron_type='security_group_rule')
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
+    def _test_delete_neutron_resource(self, resource_type, get_neutron_client, neutron_type=None):
+        nc = get_neutron_client.return_value
+
+        delete_method = getattr(self.dr, 'delete_%s' % (resource_type,))
+        delete_method('someuuid')
+
+        neutron_type = neutron_type or resource_type
+        nc_delete_method = getattr(nc, 'delete_%s' % (neutron_type,))
+        nc_delete_method.assert_called_with('someuuid')

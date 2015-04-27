@@ -144,9 +144,9 @@ class Node(object):
         self.port_ids = set()
         self.fip_addresses = set()
         self.server_status = None
-        self.nc = self.runner.get_nova_client()
         self.image = None
         self.flavor = None
+        self.attempts_left = runner.retry_count + 1
 
         if self.info.get('image') in self.runner.mappings.get('images', {}):
             self.info['image'] = self.runner.mappings['images'][self.info['image']]
@@ -159,7 +159,7 @@ class Node(object):
         This one poll nova and return the server status
         """
         if self.server_status != desired_status:
-            self.server_status = self.nc.servers.get(self.server_id).status
+            self.server_status = self.runner.get_nova_client().servers.get(self.server_id).status
         return self.server_status
 
     def clean(self):
@@ -170,7 +170,7 @@ class Node(object):
         right port is assigned to right fip etc, so atm, just removing them.
         """
         for fip_id in self.fip_ids:
-            self.runner.delete_floating_ip(fip_id)
+            self.runner.delete_floatingip(fip_id)
         self.fip_ids = set()
         self.fip_addresses = set()
 
@@ -178,14 +178,14 @@ class Node(object):
             self.runner.delete_port(port_id)
         self.port_ids = set()
 
-        server = self.nc.servers.delete(self.server_id)
+        server = self.runner.delete_server(self.server_id)
         self.server_id = None
 
     def build(self):
         if self.image is None:
-            self.image = self.nc.images.get(self.info['image'])
+            self.image = self.runner.get_nova_client().images.get(self.info['image'])
         if self.flavor is None:
-            self.flavor = self.nc.flavors.get(self.info['flavor'])
+            self.flavor = self.runner.get_nova_client().flavors.get(self.info['flavor'])
 
         def _map_network(network):
             if network in self.runner.mappings.get('networks', {}):
@@ -219,20 +219,22 @@ class Node(object):
                 'volume_size': self.info['disk'],
                 'delete_on_termination': 'true',
                 'boot_index': '0'}]
-        server = self.nc.servers.create(self.name, image=None,
-                                   block_device_mapping_v2=bdm,
-                                   flavor=self.flavor, nics=nics,
-                                   key_name=self.keypair, userdata=self.userdata)
+        server = self.runner.get_nova_client().servers.create(self.name, image=None,
+                                                              block_device_mapping_v2=bdm,
+                                                              flavor=self.flavor, nics=nics,
+                                                              key_name=self.keypair, userdata=self.userdata)
         self.runner.record_resource('server', server.id)
         self.server_id = server.id
+        self.attempts_left -= 1
 
 class DeploymentRunner(object):
     def __init__(self, config=None, suffix=None, mappings=None, key=None,
-                 record_resource=None):
+                 record_resource=None, retry_count=0):
         self.cfg = config
         self.suffix = suffix
         self.mappings = mappings or {}
         self.key = key
+        self.retry_count = retry_count
         self.record_resource = lambda *args, **kwargs: None
 
         self.conncache = {}
@@ -513,20 +515,8 @@ class DeploymentRunner(object):
 
         pending_nodes = set()
 
-        if details.get('retry-delay', False):
-            retry_delay = utils.parse_time(details['retry-delay'])
-        else:
-            retry_delay = 5
-
-        if details.get('timeout', False):
-            provision_timeout = utils.parse_time(details['timeout'])
-            deadline =  time.time() + provision_timeout
-        else:
-            provision_timeout = None
-            deadline = None
-
         def wait():
-            time.sleep(retry_delay)
+            time.sleep(5)
 
         for base_network_name, network_info in stack['networks'].items():
             if base_network_name in self.networks:
@@ -579,12 +569,12 @@ class DeploymentRunner(object):
             if state == 'ACTIVE':
                 done.add(name)
             elif state == 'ERROR':
-                if details.get('retry-if-fails', False):
-                    wait()
-                    if deadline and time.time() > deadline:
-                        raise exceptions.ProvisionTimedOutException()
+                if self.retry_count:
                     self.nodes[name].clean()
-                    self.nodes[name].build()
+                    if self.nodes[name].attempts_left:
+                         wait()
+                         self.nodes[name].build()
+                         continue
                 raise exceptions.ProvisionFailedException()
         return pending_nodes.difference(done)
 
@@ -609,7 +599,8 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
         dr = DeploymentRunner(config=cfg,
                               suffix=args.suffix,
                               mappings=load_mappings(args.mappings),
-                              key=key)
+                              key=key,
+                              retry_count=args.retry_count)
 
         if args.cont:
             dr.detect_existing_resources()
