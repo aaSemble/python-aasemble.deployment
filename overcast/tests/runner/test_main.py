@@ -38,6 +38,78 @@ common = b2b2f6a6-228f-4d42-b4f7-0d340b3390e7
 small = 34fb3740-d158-472c-8520-017278c75008
 '''
 
+class NodeTests(unittest.TestCase):
+    def setUp(self):
+        self.dr = overcast.runner.DeploymentRunner()
+        self.node = overcast.runner.Node('name', {}, self.dr)
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
+    def test_poll(self, get_nova_client):
+        nc = get_nova_client.return_value
+        self.node.server_id = 'someuuid'
+
+        nc.servers.get.return_value.status = 'ACTIVE'
+        self.node.poll()
+
+        nc.servers.get.assert_called_with('someuuid')
+        self.assertEquals(len(nc.servers.get.mock_calls), 1)
+
+        self.node.poll()
+        self.assertEquals(len(nc.servers.get.mock_calls), 1,
+                          'server.get() was called even though expected '
+                          'state already reached')
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
+    def test_build(self, get_neutron_client, get_nova_client):
+        self.node.info['image'] = 'someimage'
+        self.node.info['flavor'] = 'someflavor'
+        self.node.info['disk'] = 10
+        self.node.info['networks'] = [{'network': 'netuuid',
+                                       'secgroups': ['sg1']}]
+        self.dr.secgroups['sg1'] = 'sg1uuid'
+
+        novaclient = get_nova_client.return_value
+        novaclient.flavors.get.return_value = 'flavor_obj'
+        neutronclient = get_neutron_client.return_value
+
+        self.node.build()
+
+        novaclient.images.get.assert_called_with('someimage')
+        novaclient.flavors.get.assert_called_with('someflavor')
+
+        novaclient.servers.create.assert_called_with('name', userdata=None,
+                                                     nics=[{'port-id': mock.ANY}], image=None,
+                                                     block_device_mapping_v2=[{'boot_index': '0',
+                                                                               'uuid': 'someimage',
+                                                                               'volume_size': 10,
+                                                                               'source_type': 'image',
+                                                                               'destination_type': 'volume',
+                                                                               'delete_on_termination': 'true'}],
+                                                     key_name=None, flavor='flavor_obj')
+
+    @mock.patch('overcast.runner.DeploymentRunner.delete_server')
+    @mock.patch('overcast.runner.DeploymentRunner.delete_port')
+    @mock.patch('overcast.runner.DeploymentRunner.delete_floatingip')
+    def test_clean(self, delete_floatingip, delete_port, delete_server):
+        self.node.fip_ids = set(['fipuuid1', 'fipuuid2'])
+        self.node.port_ids = set(['portuuid1', 'portuuid2'])
+        self.node.server_id = 'serveruuid'
+
+        self.node.clean()
+
+        delete_floatingip.assert_any_call('fipuuid1')
+        delete_floatingip.assert_any_call('fipuuid2')
+        self.assertEquals(self.node.fip_ids, set())
+
+        delete_port.assert_any_call('portuuid1')
+        delete_port.assert_any_call('portuuid2')
+        self.assertEquals(self.node.port_ids, set())
+
+        delete_server.assert_any_call('serveruuid')
+        self.assertEquals(self.node.server_id, None)
+
+
 class MainTests(unittest.TestCase):
     def setUp(self):
         self.dr = overcast.runner.DeploymentRunner()
@@ -289,14 +361,13 @@ class MainTests(unittest.TestCase):
                                               'default_mysuffix': '12345678-e3c0-41a5-880d-ebeb6b1ded5e'},
                                              {'testnet': '123123123-524c-406b-b7c1-9bc069251d22',
                                               'testnet2_mysuffix': '123123123-524c-406b-b7c1-987665441d22'},
-                                             {'server1_mysuffix': 'server1_mysuffixuuid',
-                                              'server1': 'server1uuid'})
+                                             ['server1_mysuffix', 'server1'])
 
     def test_detect_existing_resources_with_suffix(self):
         self._test_detect_existing_resources('mysuffix',
                                              {'default': '12345678-e3c0-41a5-880d-ebeb6b1ded5e'},
                                              {'testnet2': '123123123-524c-406b-b7c1-987665441d22'},
-                                             {'server1': 'server1_mysuffixuuid'})
+                                             ['server1'])
 
     @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
     @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
@@ -345,7 +416,8 @@ class MainTests(unittest.TestCase):
 
         self.assertEquals(self.dr.secgroups, expected_secgroups)
         self.assertEquals(self.dr.networks, expected_networks)
-        self.assertEquals(self.dr.nodes, expected_nodes)
+        for node in expected_nodes:
+            self.assertIn(node, self.dr.nodes)
 
 
     @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
@@ -444,7 +516,7 @@ class MainTests(unittest.TestCase):
                             'images': {'trusty': 'trustyuuid'},
                             'flavors': {'small': 'smallid'}}
 
-        self.dr.create_node('test1_x123',
+        node = overcast.runner.Node('test1_x123',
                                     {'image': 'trusty',
                                      'flavor': 'small',
                                      'disk': 10,
@@ -452,7 +524,9 @@ class MainTests(unittest.TestCase):
                                                   {'network': 'ephemeral', 'assign_floating_ip': True},
                                                   {'network': 'passedthrough'}]},
                                     userdata='foo',
-                                    keypair='key_x123')
+                                    keypair='key_x123',
+                                    runner=self.dr)
+        node.build()
 
         nc.flavors.get.assert_called_with('smallid')
         nc.images.get.assert_called_with('trustyuuid')
@@ -497,13 +571,87 @@ class MainTests(unittest.TestCase):
         self.assertEquals(output.getvalue(), expected_value)
 
 
+    @mock.patch('overcast.runner.Node.build')
+    def test__create_node(self, node_build):
+        self.dr._create_node('nodename', {}, 'keypair', '')
+
+        self.assertIn('nodename', self.dr.nodes)
+
+        self.dr.nodes['nodename'].build.assert_called_once_with()
+
+    def test_poll_pending_nodes_retry(self):
+        self.dr.nodes['node1'] = node1 = mock.MagicMock()
+        self.dr.nodes['node2'] = node2 = mock.MagicMock()
+
+        def decrement_attempts_left(node):
+            node.attempts_left -= 1
+
+        node1.build.side_effect = lambda: decrement_attempts_left(node1)
+        node2.build.side_effect = lambda: decrement_attempts_left(node2)
+
+        node1.poll.side_effect = ['BUILD', 'BUILD', 'BUILD', 'ACTIVE']
+        node2.poll.side_effect = ['BUILD', 'BUILD', 'ERROR', 'BUILD', 'BUILD', 'ERROR']
+
+        node1.attempts_left = 2
+        node2.attempts_left = 1
+
+        self.dr.retry_count = 2
+
+        pending_nodes = set(['node1', 'node2'])
+
+        # Both are still BUILD
+        pending_nodes = self.dr._poll_pending_nodes(pending_nodes)
+        self.assertEquals(pending_nodes, set(['node1', 'node2']))
+
+        # Both are still BUILD
+        pending_nodes = self.dr._poll_pending_nodes(pending_nodes)
+        self.assertEquals(pending_nodes, set(['node1', 'node2']))
+
+        self.assertFalse(node1.clean.called)
+        self.assertFalse(node1.build.called)
+        self.assertFalse(node2.clean.called)
+        self.assertFalse(node2.build.called)
+
+        # node1 is still BUILD, node2 is ERROR
+        pending_nodes = self.dr._poll_pending_nodes(pending_nodes)
+        self.assertEquals(pending_nodes, set(['node1', 'node2']))
+
+        self.assertFalse(node1.clean.called)
+        self.assertFalse(node1.build.called)
+
+        node2.clean.assert_called_with()
+        node2.build.assert_called_with()
+
+        self.assertEquals(self.dr.nodes['node2'], node2, 'Node obj was replaced')
+
+        # node1 become ACTIVE, node2 is BUILD again
+        pending_nodes = self.dr._poll_pending_nodes(pending_nodes)
+        self.assertEquals(pending_nodes, set(['node2']))
+
+        # node2 is still BUILD
+        pending_nodes = self.dr._poll_pending_nodes(pending_nodes)
+        self.assertEquals(pending_nodes, set(['node2']))
+
+        # node2 fails, so we give up
+        self.assertRaises(overcast.exceptions.ProvisionFailedException,
+                          self.dr._poll_pending_nodes, pending_nodes)
+
+
     @mock.patch('overcast.runner.DeploymentRunner.create_network')
     @mock.patch('overcast.runner.DeploymentRunner.create_security_group')
-    @mock.patch('overcast.runner.DeploymentRunner.create_node')
-    def test_provision_step(self, create_node, create_security_group, create_network):
+    @mock.patch('overcast.runner.DeploymentRunner._create_node')
+    @mock.patch('overcast.runner.DeploymentRunner._poll_pending_nodes')
+    @mock.patch('overcast.runner.time')
+    def test_provision_step(self, time, _poll_pending_nodes, _create_node,
+                            create_security_group, create_network):
         create_network.return_value = 'netuuid'
         create_security_group.return_value = 'sguuid'
         self.dr.suffix = 'x123'
+        _poll_pending_nodes.side_effect = [set(['other', 'bootstrap1', 'bootstrap2']),
+                                           set(['bootstrap1', 'bootstrap2']),
+                                           set(['bootstrap1']),
+                                           set()]
+
         self.dr.provision_step({'stack': 'overcast/tests/runner/examplestack1.yaml'})
 
         create_network.assert_called_with('undercloud_x123', {'cidr': '10.240.292.0/24'})
@@ -511,26 +659,78 @@ class MainTests(unittest.TestCase):
                                                  [{'to_port': 22,
                                                    'cidr': '0.0.0.0/0',
                                                    'from_port': 22}])
-        create_node.assert_any_call('other_x123',
-                                    {'networks': [{'securitygroups': ['jumphost'],
-                                                   'network': 'default',
-                                                   'assign_floating_ip': True},
-                                              {'network': 'undercloud'}],
-                                     'flavor': 'bootstrap',
-                                     'image': 'trusty'},
-                                    userdata=None,
-                                    keypair=None)
-        create_node.assert_any_call('bootstrap1_x123',
-                                    {'networks': [{'securitygroups': ['jumphost'], 'network': 'default'},
-                                                  {'network': 'undercloud'}],
-                                     'flavor': 'bootstrap',
-                                     'image': 'trusty'},
-                                    userdata=None,
-                                    keypair=None)
-        create_node.assert_any_call('bootstrap2_x123',
-                                    {'networks': [{'securitygroups': ['jumphost'], 'network': 'default'},
-                                                  {'network': 'undercloud'}],
-                                     'flavor': 'bootstrap',
-                                     'image': 'trusty'},
-                                    userdata=None,
-                                    keypair=None)
+        self.assertEquals(_poll_pending_nodes.mock_calls,
+                          [mock.call(set(['other', 'bootstrap1', 'bootstrap2'])),
+                           mock.call(set(['other', 'bootstrap1', 'bootstrap2'])),
+                           mock.call(set(['bootstrap1', 'bootstrap2'])),
+                           mock.call(set(['bootstrap1']))])
+        _create_node.assert_any_call('other',
+                                     {'networks': [{'securitygroups': ['jumphost'],
+                                                    'network': 'default',
+                                                    'assign_floating_ip': True},
+                                               {'network': 'undercloud'}],
+                                      'flavor': 'bootstrap',
+                                      'image': 'trusty'},
+                                     userdata=None,
+                                     keypair_name=None)
+        _create_node.assert_any_call('bootstrap1',
+                                     {'networks': [{'securitygroups': ['jumphost'], 'network': 'default'},
+                                                   {'network': 'undercloud'}],
+                                      'flavor': 'bootstrap',
+                                      'image': 'trusty'},
+                                     userdata=None,
+                                     keypair_name=None)
+        _create_node.assert_any_call('bootstrap2',
+                                     {'networks': [{'securitygroups': ['jumphost'], 'network': 'default'},
+                                                   {'network': 'undercloud'}],
+                                      'flavor': 'bootstrap',
+                                      'image': 'trusty'},
+                                     userdata=None,
+                                     keypair_name=None)
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
+    def test_delete_server(self, get_nova_client):
+        nc = get_nova_client.return_value
+
+        self.dr.delete_server('someuuid')
+
+        nc.servers.delete.assert_called_with('someuuid')
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
+    def test_delete_keypair(self, get_nova_client):
+        nc = get_nova_client.return_value
+
+        self.dr.delete_keypair('somename')
+
+        nc.keypairs.delete.assert_called_with('somename')
+
+    def test_delete_floatingip(self):
+        self._test_delete_neutron_resource('floatingip')
+
+    def test_delete_network(self):
+        self._test_delete_neutron_resource('network')
+
+    def test_delete_port(self):
+        self._test_delete_neutron_resource('port')
+
+    def test_delete_subnet(self):
+        self._test_delete_neutron_resource('subnet')
+
+    def test_delete_secgroup(self):
+        self._test_delete_neutron_resource('secgroup',
+                                           neutron_type='security_group')
+
+    def test_delete_secgroup_rule(self):
+        self._test_delete_neutron_resource('secgroup_rule',
+                                           neutron_type='security_group_rule')
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
+    def _test_delete_neutron_resource(self, resource_type, get_neutron_client, neutron_type=None):
+        nc = get_neutron_client.return_value
+
+        delete_method = getattr(self.dr, 'delete_%s' % (resource_type,))
+        delete_method('someuuid')
+
+        neutron_type = neutron_type or resource_type
+        nc_delete_method = getattr(nc, 'delete_%s' % (neutron_type,))
+        nc_delete_method.assert_called_with('someuuid')
