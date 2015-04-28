@@ -572,7 +572,6 @@ class DeploymentRunner(object):
                 if self.retry_count:
                     self.nodes[name].clean()
                     if self.nodes[name].attempts_left:
-                         wait()
                          self.nodes[name].build()
                          continue
                 raise exceptions.ProvisionFailedException()

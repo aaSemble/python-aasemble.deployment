@@ -105,7 +105,7 @@ class NodeTests(unittest.TestCase):
         delete_port.assert_any_call('portuuid1')
         delete_port.assert_any_call('portuuid2')
         self.assertEquals(self.node.port_ids, set())
-        
+
         delete_server.assert_any_call('serveruuid')
         self.assertEquals(self.node.server_id, None)
 
@@ -569,6 +569,72 @@ class MainTests(unittest.TestCase):
         output = StringIO()
         overcast.runner.list_refs(args, output)
         self.assertEquals(output.getvalue(), expected_value)
+
+
+    @mock.patch('overcast.runner.Node.build')
+    def test__create_node(self, node_build):
+        self.dr._create_node('nodename', {}, 'keypair', '')
+
+        self.assertIn('nodename', self.dr.nodes)
+
+        self.dr.nodes['nodename'].build.assert_called_once_with()
+
+    def test_poll_pending_nodes_retry(self):
+        self.dr.nodes['node1'] = node1 = mock.MagicMock()
+        self.dr.nodes['node2'] = node2 = mock.MagicMock()
+
+        def decrement_attempts_left(node):
+            node.attempts_left -= 1
+
+        node1.build.side_effect = lambda: decrement_attempts_left(node1)
+        node2.build.side_effect = lambda: decrement_attempts_left(node2)
+
+        node1.poll.side_effect = ['BUILD', 'BUILD', 'BUILD', 'ACTIVE']
+        node2.poll.side_effect = ['BUILD', 'BUILD', 'ERROR', 'BUILD', 'BUILD', 'ERROR']
+
+        node1.attempts_left = 2
+        node2.attempts_left = 1
+
+        self.dr.retry_count = 2
+
+        pending_nodes = set(['node1', 'node2'])
+
+        # Both are still BUILD
+        pending_nodes = self.dr._poll_pending_nodes(pending_nodes)
+        self.assertEquals(pending_nodes, set(['node1', 'node2']))
+
+        # Both are still BUILD
+        pending_nodes = self.dr._poll_pending_nodes(pending_nodes)
+        self.assertEquals(pending_nodes, set(['node1', 'node2']))
+
+        self.assertFalse(node1.clean.called)
+        self.assertFalse(node1.build.called)
+        self.assertFalse(node2.clean.called)
+        self.assertFalse(node2.build.called)
+
+        # node1 is still BUILD, node2 is ERROR
+        pending_nodes = self.dr._poll_pending_nodes(pending_nodes)
+        self.assertEquals(pending_nodes, set(['node1', 'node2']))
+
+        self.assertFalse(node1.clean.called)
+        self.assertFalse(node1.build.called)
+
+        node2.clean.assert_called_with()
+        node2.build.assert_called_with()
+
+        self.assertEquals(self.dr.nodes['node2'], node2, 'Node obj was replaced')
+
+        # node1 become ACTIVE, node2 is BUILD again
+        pending_nodes = self.dr._poll_pending_nodes(pending_nodes)
+        self.assertEquals(pending_nodes, set(['node2']))
+
+        # node2 is still BUILD
+        pending_nodes = self.dr._poll_pending_nodes(pending_nodes)
+        self.assertEquals(pending_nodes, set(['node2']))
+
+        # node2 fails, so we give up
+        self.assertRaises(overcast.exceptions.ProvisionFailedException,
+                          self.dr._poll_pending_nodes, pending_nodes)
 
 
     @mock.patch('overcast.runner.DeploymentRunner.create_network')
