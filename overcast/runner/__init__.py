@@ -647,7 +647,8 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
     deploy_parser.add_argument('--mappings', help='Resource map file')
     deploy_parser.add_argument('--key', help='Public key file')
     deploy_parser.add_argument('--cleanup', help='Cleanup file')
-    deploy_parser.add_argument('--retry-count', type=int, help='Retry RETRY-COUNT times before giving up provisioning a VM')
+    deploy_parser.add_argument('--retry-count', type=int, default=0,
+                               help='Retry RETRY-COUNT times before giving up provisioning a VM')
     deploy_parser.add_argument('--incremental', dest='cont', action='store_true',
                                help="Don't create resources if identically named ones already exist")
     deploy_parser.add_argument('name', help='Deployment to perform')
