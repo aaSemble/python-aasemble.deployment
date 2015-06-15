@@ -201,7 +201,7 @@ class Node(object):
         for eth_idx, network in enumerate(self.info['networks']):
            port_name = '%s_eth%d' % (self.name, eth_idx)
            port_id = self.runner.create_port(port_name, _map_network(network['network']),
-                                      [self.runner.secgroups[secgroup] for secgroup in network.get('secgroups', [])])
+                                      [self.runner.secgroups[secgroup] for secgroup in network.get('securitygroups', [])])
            self.runner.record_resource('port', port_id)
            self.port_ids.add(port_id)
 
