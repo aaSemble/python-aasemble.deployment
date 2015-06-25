@@ -61,25 +61,26 @@ class NodeTests(unittest.TestCase):
 
     @mock.patch('overcast.runner.DeploymentRunner.get_nova_client')
     @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
-    def test_build(self, get_neutron_client, get_nova_client):
+    @mock.patch('overcast.runner.Node.create_nics')
+    def test_build(self, create_nics, get_neutron_client, get_nova_client):
         self.node.info['image'] = 'someimage'
         self.node.info['flavor'] = 'someflavor'
         self.node.info['disk'] = 10
-        self.node.info['networks'] = [{'network': 'netuuid',
-                                       'secgroups': ['sg1']}]
-        self.dr.secgroups['sg1'] = 'sg1uuid'
+        self.node.info['networks'] = mock.sentinel.Networks
 
         novaclient = get_nova_client.return_value
         novaclient.flavors.get.return_value = 'flavor_obj'
         neutronclient = get_neutron_client.return_value
+        create_nics.return_value = ['portuuid1', 'portuuid2']
 
         self.node.build()
 
-        novaclient.images.get.assert_called_with('someimage')
+        create_nics.assert_called_with(mock.sentinel.Networks)
         novaclient.flavors.get.assert_called_with('someflavor')
 
         novaclient.servers.create.assert_called_with('name', userdata=None,
-                                                     nics=[{'port-id': mock.ANY}], image=None,
+                                                     nics=[{'port-id': 'portuuid1'}, {'port-id': 'portuuid2'}],
+                                                     image=None,
                                                      block_device_mapping_v2=[{'boot_index': '0',
                                                                                'uuid': 'someimage',
                                                                                'volume_size': 10,
@@ -112,6 +113,29 @@ class NodeTests(unittest.TestCase):
 
         delete_server.assert_any_call('serveruuid')
         self.assertEquals(self.node.server_id, None)
+
+    @mock.patch('overcast.runner.DeploymentRunner.create_port')
+    @mock.patch('overcast.runner.DeploymentRunner.create_floating_ip')
+    @mock.patch('overcast.runner.DeploymentRunner.associate_floating_ip')
+    def test_create_nics(self, associate_floating_ip, create_floating_ip, create_port):
+        self.dr.secgroups['secgroup1'] = 'secgroupuuid1'
+        self.dr.secgroups['secgroup2'] = 'secgroupuuid2'
+        networks = [{'network': 'network1',
+                     'securitygroups': ['secgroup1']},
+                    {'network': 'network2',
+                     'securitygroups': ['secgroup1', 'secgroup2'],
+                     'assign_floating_ip': True}]
+
+        create_port.side_effect = [{'id': 'port1uuid'},
+                                   {'id': 'port2uuid'}]
+        create_floating_ip.side_effect = [('fip1uuid', '1.2.3.4')]
+
+        nics = self.node.create_nics(networks)
+
+        create_port.assert_any_call('name_eth0', 'network1', ['secgroupuuid1'])
+        create_port.assert_any_call('name_eth1', 'network2', ['secgroupuuid1', 'secgroupuuid2'])
+
+        self.assertEquals(nics, ['port1uuid', 'port2uuid'])
 
 
 class MainTests(unittest.TestCase):
@@ -579,7 +603,6 @@ class MainTests(unittest.TestCase):
         node.build()
 
         nc.flavors.get.assert_called_with('smallid')
-        nc.images.get.assert_called_with('trustyuuid')
 
         nc.servers.create.assert_called_with('test1_x123',
                                              nics=[{'port-id': 'nicuuid1'},

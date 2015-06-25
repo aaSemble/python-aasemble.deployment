@@ -179,14 +179,9 @@ class Node(object):
         server = self.runner.delete_server(self.server_id)
         self.server_id = None
 
-    def build(self):
-        if self.image is None:
-            self.image = self.runner.get_nova_client().images.get(self.info['image'])
-        if self.flavor is None:
-            self.flavor = self.runner.get_nova_client().flavors.get(self.info['flavor'])
-
+    def create_nics(self, networks):
         nics = []
-        for eth_idx, network in enumerate(self.info['networks']):
+        for eth_idx, network in enumerate(networks):
            port_name = '%s_eth%d' % (self.name, eth_idx)
            port_info = self.runner.create_port(port_name, network['network'],
                                                [self.runner.secgroups[secgroup] for secgroup in network.get('securitygroups', [])])
@@ -199,7 +194,14 @@ class Node(object):
               port_info['floating_ip'] = fip_address
               self.fip_ids.add(fip_id)
 
-           nics.append({'port-id': port_info['id']})
+           nics.append(port_info['id'])
+        return nics
+
+    def build(self):
+        if self.flavor is None:
+            self.flavor = self.runner.get_nova_client().flavors.get(self.info['flavor'])
+
+        nics = [{'port-id': port_id} for port_id in self.create_nics(self.info['networks'])]
 
         bdm = [{'source_type': 'image',
                 'uuid': self.info['image'],
