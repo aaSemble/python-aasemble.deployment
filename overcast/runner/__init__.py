@@ -442,6 +442,13 @@ class DeploymentRunner(object):
         env_prefix += add_environment('ALL_NODES',
                                       ' '.join([self.add_suffix(s) for s in self.nodes.keys()]))
 
+        for node_name, node in self.nodes.iteritems():
+            if node.info.get('export', False):
+                for port in node.ports:
+                    key = 'OVERCAST_%s_%s_fixed' % (node_name, port['network_name'])
+                    value = port['fixed_ip']
+                    env_prefix += add_environment(key, value)
+
         if 'environment' in details:
             for key, value in details['environment'].items():
                 if value.startswith('$'):
