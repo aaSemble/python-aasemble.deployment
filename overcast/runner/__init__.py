@@ -141,8 +141,7 @@ class Node(object):
         self.userdata = userdata
         self.server_id = None
         self.fip_ids = set()
-        self.port_ids = set()
-        self.fip_addresses = set()
+        self.ports = []
         self.server_status = None
         self.image = None
         self.flavor = None
@@ -172,11 +171,10 @@ class Node(object):
         for fip_id in self.fip_ids:
             self.runner.delete_floatingip(fip_id)
         self.fip_ids = set()
-        self.fip_addresses = set()
 
-        for port_id in self.port_ids:
-            self.runner.delete_port(port_id)
-        self.port_ids = set()
+        for port in self.ports:
+            self.runner.delete_port(port['id'])
+        self.ports = []
 
         server = self.runner.delete_server(self.server_id)
         self.server_id = None
@@ -190,17 +188,18 @@ class Node(object):
         nics = []
         for eth_idx, network in enumerate(self.info['networks']):
            port_name = '%s_eth%d' % (self.name, eth_idx)
-           port_id = self.runner.create_port(port_name, network['network'],
-                                             [self.runner.secgroups[secgroup] for secgroup in network.get('securitygroups', [])])
-           self.runner.record_resource('port', port_id)
-           self.port_ids.add(port_id)
+           port_info = self.runner.create_port(port_name, network['network'],
+                                               [self.runner.secgroups[secgroup] for secgroup in network.get('securitygroups', [])])
+           self.runner.record_resource('port', port_info['id'])
+           self.ports.append(port_info)
 
            if network.get('assign_floating_ip', False):
               fip_id, fip_address = self.runner.create_floating_ip()
-              self.runner.associate_floating_ip(port_id, fip_id)
+              self.runner.associate_floating_ip(port_info['id'], fip_id)
+              port_info['floating_ip'] = fip_address
               self.fip_ids.add(fip_id)
 
-           nics.append({'port-id': port_id})
+           nics.append({'port-id': port_info['id']})
 
         bdm = [{'source_type': 'image',
                 'uuid': self.info['image'],
@@ -215,6 +214,12 @@ class Node(object):
         self.runner.record_resource('server', server.id)
         self.server_id = server.id
         self.attempts_left -= 1
+
+    @property
+    def floating_ip(self):
+        for port in self.ports:
+            if 'floating_ip' in port:
+                return port['floating_ip']
 
 class DeploymentRunner(object):
     def __init__(self, config=None, suffix=None, mappings=None, key=None,
@@ -270,24 +275,13 @@ class DeploymentRunner(object):
     def detect_existing_resources(self):
         neutron = self.get_neutron_client()
 
-        instance_fip = {}
-
-        ports = {port['id']: port for port in neutron.list_ports()['ports']}
-
-        for fip in neutron.list_floatingips()['floatingips']:
-            port_id = fip['port_id']
-            if not port_id:
-                continue
-            port = ports[port_id]
-            device_id = port['device_id']
-            instance_fip[device_id] = fip['floating_ip_address']
-
         suffix = self.add_suffix('')
         if suffix:
             strip_suffix = lambda s:s[:-len(suffix)]
         else:
             strip_suffix = lambda s:s
 
+        network_name_by_id = {}
         for network in neutron.list_networks()['networks']:
             if network['name'].endswith(suffix):
                 base_name = strip_suffix(network['name'])
@@ -295,6 +289,22 @@ class DeploymentRunner(object):
                     raise exceptions.DuplicateResourceException('Network', network['name'])
 
                 self.networks[base_name] = network['id']
+                network_name_by_id[network['id']] = base_name
+
+        raw_ports = [{'id': port['id'],
+                      'fixed_ip': port['fixed_ips'][0]['ip_address'],
+                      'mac': port['mac_address'],
+                      'network_name': network_name_by_id.get(port['network_id'], port['network_id'])}
+                     for port in neutron.list_ports()['ports']]
+        ports_by_id = {port['id']: port for port in raw_ports}
+        ports_by_mac = {port['mac']: port for port in raw_ports}
+
+        for fip in neutron.list_floatingips()['floatingips']:
+            port_id = fip['port_id']
+            if not port_id:
+                continue
+            port = ports_by_id[port_id]
+            port['floating_ip'] = fip['floating_ip_address']
 
         for secgroup in neutron.list_security_groups()['security_groups']:
             if secgroup['name'].endswith(suffix):
@@ -313,8 +323,10 @@ class DeploymentRunner(object):
                     raise exceptions.DuplicateResourceException('Node', node.name)
 
                 self.nodes[base_name] = Node(node.name, {}, self)
-                if node.id in instance_fip:
-                    self.nodes[base_name].fip_addresses = set([instance_fip[node.id]])
+                for address in node.addresses.values():
+                    mac = address[0]['OS-EXT-IPS-MAC:mac_addr']
+                    port = ports_by_mac[mac]
+                    self.nodes[base_name].ports.append(port)
 
     def delete_port(self, uuid):
         nc = self.get_neutron_client()
@@ -355,8 +367,12 @@ class DeploymentRunner(object):
                 'admin_state_up': True,
                 'network_id': network_id,
                 'security_groups': secgroups}
-        port = nc.create_port({'port': port})
-        return port['port']['id']
+        port = nc.create_port({'port': port})['port']
+
+        return {'id': port['id'],
+                'fixed_ip': port['fixed_ips'][0]['ip_address'],
+                'mac': port['mac_address'],
+                'network_name': network}
 
     def create_keypair(self, name, keydata):
         nc = self.get_nova_client()
@@ -483,7 +499,7 @@ class DeploymentRunner(object):
 
     def shell_step_cmd(self, details, env_prefix=''):
         if details.get('type', None) == 'remote':
-            for fip_addr in self.nodes[details['node']].fip_addresses: break
+            fip_addr = self.nodes[details['node']].floating_ip
             return 'ssh -o StrictHostKeyChecking=no ubuntu@%s "%s bash"' % (fip_addr, env_prefix)
         else:
              return '%s bash' % (env_prefix,)

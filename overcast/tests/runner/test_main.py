@@ -88,12 +88,16 @@ class NodeTests(unittest.TestCase):
                                                                                'delete_on_termination': 'true'}],
                                                      key_name=None, flavor='flavor_obj')
 
+    def test_floating_ip(self):
+        self.node.ports = [{'floating_ip': '1.2.3.4'}]
+        self.assertEquals(self.node.floating_ip, '1.2.3.4')
+
     @mock.patch('overcast.runner.DeploymentRunner.delete_server')
     @mock.patch('overcast.runner.DeploymentRunner.delete_port')
     @mock.patch('overcast.runner.DeploymentRunner.delete_floatingip')
     def test_clean(self, delete_floatingip, delete_port, delete_server):
         self.node.fip_ids = set(['fipuuid1', 'fipuuid2'])
-        self.node.port_ids = set(['portuuid1', 'portuuid2'])
+        self.node.ports = [{'id': 'portuuid1'}, {'id': 'portuuid2'}]
         self.node.server_id = 'serveruuid'
 
         self.node.clean()
@@ -104,7 +108,7 @@ class NodeTests(unittest.TestCase):
 
         delete_port.assert_any_call('portuuid1')
         delete_port.assert_any_call('portuuid2')
-        self.assertEquals(self.node.port_ids, set())
+        self.assertEquals(self.node.ports, [])
 
         delete_server.assert_any_call('serveruuid')
         self.assertEquals(self.node.server_id, None)
@@ -327,6 +331,7 @@ class MainTests(unittest.TestCase):
             def __init__(self, name, id):
                 self.name = name
                 self.id = id
+                self.addresses = {}
 
         neutron.list_networks.return_value = {'networks': []}
         neutron.list_security_groups.return_value = {'security_groups': []}
@@ -374,6 +379,19 @@ class MainTests(unittest.TestCase):
     def _test_detect_existing_resources(self, suffix, expected_secgroups, expected_networks, expected_nodes,
                                         get_nova_client, get_neutron_client):
         neutron = get_neutron_client.return_value
+        neutron.list_ports.return_value = {'ports': [{'status': 'ACTIVE',
+                                                      'name': '1298eefe-7654-49e0-8d38-47a6e4f75bd4',
+                                                      'admin_state_up': True,
+                                                      'network_id': '123123123-524c-406b-b7c1-9bc069251d22',
+                                                      'tenant_id': 'c5f19d06a4194f138c873e97950d1f3c',
+                                                      "device_owner": "",
+                                                      "mac_address": "02:12:98:ee:fe:76",
+                                                      "fixed_ips": [{"subnet_id": "3bc91c43-06a0-4a99-8e99-83703818d908",
+                                                                     "ip_address": "10.0.0.4"}],
+                                                      "id": "1298eefe-7654-49e0-8d38-47a6e4f75bd4",
+                                                      "security_groups": ["7acbf890-e3c0-41a5-880d-ebeb6b1ded5e"],
+                                                      "device_id": ""}]}
+
         neutron.list_networks.return_value = {'networks': [{'status': 'ACTIVE',
                                                             'router:external': False,
                                                             'subnets': ['12345678-acab-4949-b06b-b095f9a6ca8c'],
@@ -407,6 +425,10 @@ class MainTests(unittest.TestCase):
             def __init__(self, name, id):
                 self.name = name
                 self.id = id
+                self.addresses = {'testnet%s' % (suffix,): [{"OS-EXT-IPS-MAC:mac_addr": "02:12:98:ee:fe:76",
+                                                             "version": 4,
+                                                             "addr": "10.0.0.4",
+                                                             "OS-EXT-IPS:type": "fixed"}]}
 
         nova.servers.list.return_value = [Server('server1', 'server1uuid'),
                                           Server('server1_mysuffix', 'server1_mysuffixuuid')]
@@ -442,6 +464,37 @@ class MainTests(unittest.TestCase):
         self.assertEquals(self.dr.create_floating_ip(), ('theuuid', '1.2.3.4'))
 
         nc.create_floatingip.assert_called_once_with({'floatingip': {'floating_network_id': 'netuuid'}})
+
+    @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
+    def test_create_port(self, get_neutron_client):
+        nc = get_neutron_client.return_value
+        nc.create_port.return_value = {'port': {
+                                         'status': 'DOWN',
+                                         'name': '1298eefe-7654-49e0-8d38-47a6e4f75bd4',
+                                         'admin_state_up': True,
+                                         'network_id': '1fcda898-ae86-462e-a2d0-2cc2384b5898',
+                                         'tenant_id': 'c5f19d06a4194f138c873e97950d1f3c',
+                                         "device_owner": "",
+                                         "mac_address": "02:12:98:ee:fe:76",
+                                         "fixed_ips": [{"subnet_id": "3bc91c43-06a0-4a99-8e99-83703818d908",
+                                                        "ip_address": "10.0.0.4"}],
+                                         "id": "1298eefe-7654-49e0-8d38-47a6e4f75bd4",
+                                         "security_groups": ["7acbf890-e3c0-41a5-880d-ebeb6b1ded5e"],
+                                         "device_id": ""}}
+
+        port = self.dr.create_port('port_name', 'network_id',
+                                   ["7acbf890-e3c0-41a5-880d-ebeb6b1ded5e"])
+
+        nc.create_port.assert_called_once_with({'port': {'name': 'port_name',
+                                                         'admin_state_up': True,
+                                                         'security_groups': ["7acbf890-e3c0-41a5-880d-ebeb6b1ded5e"],
+                                                         'network_id': 'network_id'}})
+
+        self.assertEquals(port, {'id': "1298eefe-7654-49e0-8d38-47a6e4f75bd4",
+                                 'network_name': 'network_id',
+                                 'mac': '02:12:98:ee:fe:76',
+                                 'fixed_ip': '10.0.0.4'})
+
 
     @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
     def test_create_network(self, get_neutron_client):
@@ -503,16 +556,15 @@ class MainTests(unittest.TestCase):
         nc.images.get.return_value = 'trustyimageobject'
         nc.servers.create.return_value.id = 'serveruuid'
 
-        def _create_port(name, network, secgroups):
-            return {'ephemeral': 'nicuuid1',
-                    'passedthrough': 'nicuuid2'}[network]
+        def _create_port(_infoname, network, secgroups):
+            return {'ephemeral': {'id': 'nicuuid1'},
+                    'passedthrough': {'id': 'nicuuid2'}}[network]
 
         create_port.side_effect = _create_port
 
         self.dr.networks = {'ephemeral': 'theoneIjustcreated'}
         self.dr.secgroups = {}
-        self.dr.mappings = {'networks': {'mapped': 'yes,mapped'},
-                            'images': {'trusty': 'trustyuuid'},
+        self.dr.mappings = {'images': {'trusty': 'trustyuuid'},
                             'flavors': {'small': 'smallid'}}
 
         node = overcast.runner.Node('test1_x123',
