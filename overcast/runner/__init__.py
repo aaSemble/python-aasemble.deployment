@@ -187,28 +187,17 @@ class Node(object):
         if self.flavor is None:
             self.flavor = self.runner.get_nova_client().flavors.get(self.info['flavor'])
 
-        def _map_network(network):
-            if network in self.runner.mappings.get('networks', {}):
-                netid = self.runner.mappings['networks'][network]
-            elif network in self.runner.networks:
-                netid = self.runner.networks[network]
-            else:
-                netid = network
-
-            return netid
-
         nics = []
         for eth_idx, network in enumerate(self.info['networks']):
            port_name = '%s_eth%d' % (self.name, eth_idx)
-           port_id = self.runner.create_port(port_name, _map_network(network['network']),
-                                      [self.runner.secgroups[secgroup] for secgroup in network.get('securitygroups', [])])
+           port_id = self.runner.create_port(port_name, network['network'],
+                                             [self.runner.secgroups[secgroup] for secgroup in network.get('securitygroups', [])])
            self.runner.record_resource('port', port_id)
            self.port_ids.add(port_id)
 
            if network.get('assign_floating_ip', False):
               fip_id, fip_address = self.runner.create_floating_ip()
               self.runner.associate_floating_ip(port_id, fip_id)
-              self.fip_addresses.add(fip_address)
               self.fip_ids.add(fip_id)
 
            nics.append({'port-id': port_id})
@@ -270,6 +259,13 @@ class DeploymentRunner(object):
             ks = self.get_keystone_session()
             self.conncache['neutron'] = neutronclient.Client('2.0', session=ks)
         return self.conncache['neutron']
+
+    def _map_network(self, network):
+        if network in self.mappings.get('networks', {}):
+            return self.mappings['networks'][network]
+        elif network in self.networks:
+            return self.networks[network]
+        return network
 
     def detect_existing_resources(self):
         neutron = self.get_neutron_client()
@@ -354,9 +350,10 @@ class DeploymentRunner(object):
 
     def create_port(self, name, network, secgroups):
         nc = self.get_neutron_client()
+        network_id = self._map_network(network)
         port = {'name': name,
                 'admin_state_up': True,
-                'network_id': network,
+                'network_id': network_id,
                 'security_groups': secgroups}
         port = nc.create_port({'port': port})
         return port['port']['id']

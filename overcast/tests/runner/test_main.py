@@ -504,9 +504,8 @@ class MainTests(unittest.TestCase):
         nc.servers.create.return_value.id = 'serveruuid'
 
         def _create_port(name, network, secgroups):
-            return {'yes,mapped': 'nicuuid1',
-                    'theoneIjustcreated': 'nicuuid2',
-                    'passedthrough': 'nicuuid3'}[network]
+            return {'ephemeral': 'nicuuid1',
+                    'passedthrough': 'nicuuid2'}[network]
 
         create_port.side_effect = _create_port
 
@@ -520,8 +519,7 @@ class MainTests(unittest.TestCase):
                                     {'image': 'trusty',
                                      'flavor': 'small',
                                      'disk': 10,
-                                     'networks': [{'network': 'mapped'},
-                                                  {'network': 'ephemeral', 'assign_floating_ip': True},
+                                     'networks': [{'network': 'ephemeral', 'assign_floating_ip': True},
                                                   {'network': 'passedthrough'}]},
                                     userdata='foo',
                                     keypair='key_x123',
@@ -533,8 +531,7 @@ class MainTests(unittest.TestCase):
 
         nc.servers.create.assert_called_with('test1_x123',
                                              nics=[{'port-id': 'nicuuid1'},
-                                                   {'port-id': 'nicuuid2'},
-                                                   {'port-id': 'nicuuid3'}],
+                                                   {'port-id': 'nicuuid2'}],
                                              block_device_mapping_v2=[
                                                      {'boot_index': '0',
                                                       'uuid': 'trustyuuid',
@@ -549,7 +546,6 @@ class MainTests(unittest.TestCase):
 
         self.dr.record_resource.assert_any_call('port', 'nicuuid1')
         self.dr.record_resource.assert_any_call('port', 'nicuuid2')
-        self.dr.record_resource.assert_any_call('port', 'nicuuid3')
         self.dr.record_resource.assert_any_call('server', 'serveruuid')
 
     def test_list_refs_human(self):
