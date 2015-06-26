@@ -434,7 +434,7 @@ class DeploymentRunner(object):
             self.record_resource('secgroup_rule', secgroup_rule['security_group_rule']['id'])
         return secgroup['security_group']['id']
 
-    def shell_step(self, details, environment=None):
+    def build_env_prefix(self, details):
         env_prefix = ''
         def add_environment(key, value):
             return '%s=%s ' % (pipes.quote(key), pipes.quote(value))
@@ -454,6 +454,11 @@ class DeploymentRunner(object):
                 if value.startswith('$'):
                     value = os.environ.get(value[1:])
                 env_prefix += add_environment(key, value)
+
+        return env_prefix
+
+    def shell_step(self, details, environment=None):
+        env_prefix = self.build_env_prefix(details)
 
         cmd = self.shell_step_cmd(details, env_prefix)
 
