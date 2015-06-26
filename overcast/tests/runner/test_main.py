@@ -573,7 +573,10 @@ class MainTests(unittest.TestCase):
 
     @mock.patch('overcast.runner.Node.build')
     def test__create_node(self, node_build):
-        self.dr._create_node('nodename', {}, 'keypair', '')
+        self.dr.nodes['existing_node'] = overcast.runner.Node('existing_node', {}, self.dr)
+
+        self.assertEquals(self.dr._create_node('nodename', {}, 'keypair', ''),
+                          'nodename')
 
         self.assertIn('nodename', self.dr.nodes)
 
@@ -651,6 +654,8 @@ class MainTests(unittest.TestCase):
                                            set(['bootstrap1', 'bootstrap2']),
                                            set(['bootstrap1']),
                                            set()]
+
+        _create_node.side_effect = lambda base_name, node_info, keypair_name, userdata: base_name
 
         self.dr.provision_step({'stack': 'overcast/tests/runner/examplestack1.yaml'})
 
