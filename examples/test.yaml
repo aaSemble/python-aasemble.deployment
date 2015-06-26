@@ -13,3 +13,10 @@ main:
       retry-if-fails: true
       retry-delay: 5s
       total-timeout: 5m
+  - shell:
+      cmd: 'env'
+      type: remote
+      node: bootstrap
+      retry-if-fails: true
+      retry-delay: 5s
+      total-timeout: 5m

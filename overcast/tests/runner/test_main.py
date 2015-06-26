@@ -249,6 +249,30 @@ class MainTests(unittest.TestCase):
         self.dr.shell_step(details, {})
         self.assertEquals(list(run_cmd_once.side_effect), [])
 
+    def test_build_env_prefix(self):
+        class Node(object):
+            def __init__(self, name, ports, export):
+                self.name = name
+                self.info = {'export': export}
+                self.ports = ports
+
+        self.dr.nodes = {'node1': Node('node1', [{'fixed_ip': '1.2.3.4',
+                                                  'network_name': 'network1'},
+                                                 {'fixed_ip': '2.3.4.5',
+                                                  'network_name': 'network2'}],
+                                       True),
+                         'node2': Node('node2', [{'fixed_ip': '1.2.3.5',
+                                                  'network_name': 'network1'},
+                                                 {'fixed_ip': '2.3.4.5',
+                                                  'network_name': 'network3'}],
+                                       False)}
+
+        env_prefix = self.dr.build_env_prefix({})
+
+        self.assertIn('OVERCAST_node1_network1_fixed=1.2.3.4', env_prefix)
+        self.assertIn('OVERCAST_node1_network2_fixed=2.3.4.5', env_prefix)
+        self.assertNotIn('OVERCAST_node2', env_prefix)
+
 
     @mock.patch('overcast.runner.time')
     @mock.patch('overcast.runner.run_cmd_once')
