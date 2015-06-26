@@ -537,13 +537,15 @@ class DeploymentRunner(object):
                 count = node_info.pop('number')
                 for idx in range(1, count+1):
                     node_name = '%s%d' % (base_node_name, idx)
-                    self._create_node(node_name, node_info,
-                                      keypair_name=keypair_name, userdata=userdata)
-                    pending_nodes.add(node_name)
+                    name = self._create_node(node_name, node_info,
+                                             keypair_name=keypair_name, userdata=userdata)
+                    if name:
+                        pending_nodes.add(name)
             else:
-                self._create_node(base_node_name, node_info,
-                                  keypair_name=keypair_name, userdata=userdata)
-                pending_nodes.add(base_node_name)
+                name = self._create_node(base_node_name, node_info,
+                                         keypair_name=keypair_name, userdata=userdata)
+                if name:
+                    pending_nodes.add(name)
 
         while True:
             pending_nodes = self._poll_pending_nodes(pending_nodes)
@@ -560,6 +562,7 @@ class DeploymentRunner(object):
                                      keypair=keypair_name,
                                      userdata=userdata)
         self.nodes[base_name].build()
+        return base_name
 
 
     def _poll_pending_nodes(self, pending_nodes):
