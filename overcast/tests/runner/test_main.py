@@ -566,24 +566,37 @@ class MainTests(unittest.TestCase):
     def test_create_security_group(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.create_security_group.return_value = {'security_group': {'id': 'theuuid'}}
-        nc.create_security_group_rule.return_value = {'security_group_rule': {'id': 'theruleuuid'}}
+        nc.create_security_group_rule.side_effect = [{'security_group_rule': {'id': 'theruleuuid1'}},
+                                                     {'security_group_rule': {'id': 'theruleuuid2'}}]
 
         self.dr.record_resource = mock.MagicMock()
-        self.dr.create_security_group('secgroupname', [{'cidr': '12.0.0.0/12',
-                                                                'protocol': 'tcp',
-                                                                'from_port': 21,
-                                                                'to_port': 22}])
+        self.dr.create_security_group('secgroupname', [{'source_group': 'secgroupname',
+                                                        'protocol': 'tcp',
+                                                        'from_port': 23,
+                                                        'to_port': 24},
+                                                       {'cidr': '12.0.0.0/12',
+                                                        'protocol': 'tcp',
+                                                        'from_port': 21,
+                                                        'to_port': 22}])
 
         nc.create_security_group.assert_called_once_with({'security_group': {'name': 'secgroupname'}})
-        nc.create_security_group_rule.assert_called_once_with({'security_group_rule': {'remote_ip_prefix': '12.0.0.0/12',
-                                                                                       'direction': 'ingress',
-                                                                                       'ethertype': 'IPv4',
-                                                                                       'port_range_min': 21,
-                                                                                       'port_range_max': 22,
-                                                                                       'protocol': 'tcp',
-                                                                                       'security_group_id': 'theuuid'}})
+        nc.create_security_group_rule.assert_any_call({'security_group_rule': {'remote_ip_prefix': '12.0.0.0/12',
+                                                                               'direction': 'ingress',
+                                                                               'ethertype': 'IPv4',
+                                                                               'port_range_min': 21,
+                                                                               'port_range_max': 22,
+                                                                               'protocol': 'tcp',
+                                                                               'security_group_id': 'theuuid'}})
+        nc.create_security_group_rule.assert_any_call({'security_group_rule': {'remote_group_id': 'theuuid',
+                                                                               'direction': 'ingress',
+                                                                               'ethertype': 'IPv4',
+                                                                               'port_range_min': 23,
+                                                                               'port_range_max': 24,
+                                                                               'protocol': 'tcp',
+                                                                               'security_group_id': 'theuuid'}})
         self.dr.record_resource.assert_any_call('secgroup', 'theuuid')
-        self.dr.record_resource.assert_any_call('secgroup_rule', 'theruleuuid')
+        self.dr.record_resource.assert_any_call('secgroup_rule', 'theruleuuid1')
+        self.dr.record_resource.assert_any_call('secgroup_rule', 'theruleuuid2')
 
     @mock.patch('overcast.runner.DeploymentRunner.get_neutron_client')
     def test_create_security_group_without_rules(self, get_neutron_client):
@@ -755,7 +768,7 @@ class MainTests(unittest.TestCase):
         self.dr.provision_step({'stack': 'overcast/tests/runner/examplestack1.yaml'})
 
         create_network.assert_called_with('undercloud_x123', {'cidr': '10.240.292.0/24'})
-        create_security_group.assert_called_with('jumphost_x123',
+        create_security_group.assert_called_with('jumphost',
                                                  [{'to_port': 22,
                                                    'cidr': '0.0.0.0/0',
                                                    'from_port': 22}])
