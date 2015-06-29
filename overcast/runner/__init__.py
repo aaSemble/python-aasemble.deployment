@@ -416,23 +416,31 @@ class DeploymentRunner(object):
 
         return network['network']['id']
 
-    def create_security_group(self, name, info):
+    def create_security_group(self, base_name, info):
         nc = self.get_neutron_client()
+        name = self.add_suffix(base_name)
+
         secgroup = {'name': name}
-        secgroup = nc.create_security_group({'security_group': secgroup})
-        self.record_resource('secgroup', secgroup['security_group']['id'])
+        secgroup = nc.create_security_group({'security_group': secgroup})['security_group']
+
+        self.record_resource('secgroup', secgroup['id'])
+        self.secgroups[base_name] = secgroup['id']
 
         for rule in (info or []):
             secgroup_rule = {"direction": "ingress",
-                             "remote_ip_prefix": rule['cidr'],
                              "ethertype": "IPv4",
                              "port_range_min": rule['from_port'],
                              "port_range_max": rule['to_port'],
                              "protocol": rule['protocol'],
-                             "security_group_id": secgroup['security_group']['id']}
+                             "security_group_id": secgroup['id']}
+
+            if 'source_group' in rule:
+                secgroup_rule['remote_group_id'] = self.secgroups.get(rule['source_group'], rule['source_group'])
+            else:
+                secgroup_rule['remote_ip_prefix'] = rule['cidr']
+
             secgroup_rule = nc.create_security_group_rule({'security_group_rule': secgroup_rule})
             self.record_resource('secgroup_rule', secgroup_rule['security_group_rule']['id'])
-        return secgroup['security_group']['id']
 
     def build_env_prefix(self, details):
         env_prefix = ''
@@ -555,9 +563,7 @@ class DeploymentRunner(object):
         for base_secgroup_name, secgroup_info in stack['securitygroups'].items():
             if base_secgroup_name in self.secgroups:
                 continue
-            secgroup_name = self.add_suffix(base_secgroup_name)
-            self.secgroups[base_secgroup_name] = self.create_security_group(secgroup_name,
-                                                                            secgroup_info)
+            self.create_security_group(base_secgroup_name, secgroup_info)
 
         for base_node_name, node_info in stack['nodes'].items():
             if 'number' in node_info:
