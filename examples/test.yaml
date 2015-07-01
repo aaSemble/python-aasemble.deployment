@@ -2,7 +2,7 @@ main:
   - shell:
       cmd: "echo Hello, world"
   - shell:
-      cmd: "echo '#!/bin/sh\napt-get install -y squid3;sed -e \"/^http_access.allow.localhost$/aacl localnet src 10.0.0.0/8\\nhttp_access allow localnet\" -i /etc/squid3/squid.conf; sudo restart squid3' > userdata.txt"
+      cmd: "echo '#!/bin/sh\napt-get update\napt-get install -y squid3;sed -e \"/^http_access.allow.localhost$/aacl localnet src 10.0.0.0/8\\nhttp_access allow localnet\" -i /etc/squid3/squid.conf; sudo restart squid3' > userdata.txt"
   - provision:
       stack: proxy.yaml
       userdata: userdata.txt
