@@ -25,7 +25,8 @@ import sys
 import time
 import yaml
 
-from novaclient.exceptions import Conflict
+from neutronclient.common.exceptions import Conflict as NeutronConflict
+from novaclient.exceptions import Conflict as NovaConflict
 
 from overcast import utils
 from overcast import exceptions
@@ -39,7 +40,7 @@ def load_mappings(f='.overcast.mappings.ini'):
         parser = ConfigParser.SafeConfigParser()
         parser.readfp(fp)
         mappings = {}
-        for t in ('flavors', 'networks', 'images'):
+        for t in ('flavors', 'networks', 'images', 'routers'):
             mappings[t] = {}
             if parser.has_section(t):
                 mappings[t].update(parser.items(t))
@@ -126,8 +127,6 @@ def get_creds_from_env():
     d['password'] = os.environ['OS_PASSWORD']
     d['auth_url'] = os.environ['OS_AUTH_URL']
     d['tenant_name'] = os.environ['OS_TENANT_NAME']
-#    d['region_name'] = os.environ.get('OS_REGION_NAME')
-#    d['cacert'] = os.environ.get('OS_CACERT', None)
     return d
 
 
@@ -203,14 +202,18 @@ class Node(object):
 
         nics = [{'port-id': port_id} for port_id in self.create_nics(self.info['networks'])]
 
-        bdm = [{'source_type': 'image',
-                'uuid': self.info['image'],
-                'destination_type': 'volume',
-                'volume_size': self.info['disk'],
-                'delete_on_termination': 'true',
-                'boot_index': '0'}]
+        volume = self.runner.get_cinder_client().volumes.create(size=self.info['disk'],
+                                                                imageRef=self.info['image'])
+        self.record_resource('volume', volume.id)
+
+        while volume.status != 'available':
+            time.sleep(3)
+            volume = self.runner.get_cinder_client().volumes.get(volume.id)
+
+        bdm = {'vda': '%s:::1' % (volume.id,)}
+
         server = self.runner.get_nova_client().servers.create(self.name, image=None,
-                                                              block_device_mapping_v2=bdm,
+                                                              block_device_mapping=bdm,
                                                               flavor=self.flavor, nics=nics,
                                                               key_name=self.keypair, userdata=self.userdata)
         self.runner.record_resource('server', server.id)
@@ -256,15 +259,29 @@ class DeploymentRunner(object):
     def get_nova_client(self):
         import novaclient.client as novaclient
         if 'nova' not in self.conncache:
-            ks = self.get_keystone_session()
-            self.conncache['nova'] = novaclient.Client("1.1", session=ks)
+            kwargs = {'session': self.get_keystone_session()}
+            if 'OS_REGION_NAME' in os.environ:
+                kwargs['region_name'] = os.environ['OS_REGION_NAME']
+            self.conncache['nova'] = novaclient.Client("2", **kwargs)
         return self.conncache['nova']
+
+    def get_cinder_client(self):
+        raise Exception('Lets not do this in tests, ok?')
+        import cinderclient.client as cinderclient
+        if 'cinder' not in self.conncache:
+            kwargs = {'session': self.get_keystone_session()}
+            if 'OS_REGION_NAME' in os.environ:
+                kwargs['region_name'] = os.environ['OS_REGION_NAME']
+            self.conncache['cinder'] = cinderclient.Client('1', **kwargs)
+        return self.conncache['cinder']
 
     def get_neutron_client(self):
         import neutronclient.neutron.client as neutronclient
         if 'neutron' not in self.conncache:
-            ks = self.get_keystone_session()
-            self.conncache['neutron'] = neutronclient.Client('2.0', session=ks)
+            kwargs = {'session': self.get_keystone_session()}
+            if 'OS_REGION_NAME' in os.environ:
+                kwargs['region_name'] = os.environ['OS_REGION_NAME']
+            self.conncache['neutron'] = neutronclient.Client('2.0', **kwargs)
         return self.conncache['neutron']
 
     def _map_network(self, network):
@@ -330,6 +347,10 @@ class DeploymentRunner(object):
                     port = ports_by_mac[mac]
                     self.nodes[base_name].ports.append(port)
 
+    def delete_volume(self, uuid):
+        cc = self.get_cinder_client()
+        cc.volumes.delete(uuid)
+
     def delete_port(self, uuid):
         nc = self.get_neutron_client()
         nc.delete_port(uuid)
@@ -338,9 +359,31 @@ class DeploymentRunner(object):
         nc = self.get_neutron_client()
         nc.delete_network(uuid)
 
+    def delete_router(self, uuid):
+        nc = self.get_neutron_client()
+        nc.delete_router(uuid)
+
     def delete_subnet(self, uuid):
         nc = self.get_neutron_client()
-        nc.delete_subnet(uuid)
+        try:
+            nc.delete_subnet(uuid)
+        except NeutronConflict, e:
+            # This is probably due to the router port. Let's find it.
+            router_found = False
+            for port in nc.list_ports(device_owner='network:router_interface')['ports']:
+                for fixed_ip in port['fixed_ips']:
+                    if fixed_ip['subnet_id'] == uuid:
+                        router_found = True
+                        nc.remove_interface_router(port['device_id'],
+                                                   {'subnet_id': uuid})
+                        break
+            if router_found:
+                # Let's try again
+                nc.delete_subnet(uuid)
+            else:
+                # Ok, we didn't find a router, so clearly this is a different
+                # problem. Just re-raise the original exception.
+                raise
 
     def delete_secgroup(self, uuid):
         nc = self.get_neutron_client()
@@ -380,7 +423,7 @@ class DeploymentRunner(object):
         nc = self.get_nova_client()
         try:
             nc.keypairs.create(name, keydata)
-        except Conflict:
+        except NovaConflict:
             pass
 
     def find_floating_network(self, ):
@@ -411,8 +454,11 @@ class DeploymentRunner(object):
                   "ip_version": 4,
                   "cidr": info['cidr'],
                   "name": name}
-        subnet = nc.create_subnet({'subnet': subnet})
-        self.record_resource('subnet', subnet['subnet']['id'])
+        subnet = nc.create_subnet({'subnet': subnet})['subnet']
+        self.record_resource('subnet', subnet['id'])
+
+        if '*' in self.mappings.get('routers', {}):
+            nc.add_interface_router(self.mappings['routers']['*'], {'subnet_id': subnet['id']})
 
         return network['network']['id']
 
