@@ -266,7 +266,6 @@ class DeploymentRunner(object):
         return self.conncache['nova']
 
     def get_cinder_client(self):
-        raise Exception('Lets not do this in tests, ok?')
         import cinderclient.client as cinderclient
         if 'cinder' not in self.conncache:
             kwargs = {'session': self.get_keystone_session()}
