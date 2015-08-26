@@ -434,10 +434,18 @@ class DeploymentRunner(object):
 
     def create_keypair(self, name, keydata):
         nc = self.get_nova_client()
-        try:
-            nc.keypairs.create(name, keydata)
-        except NovaConflict:
-            pass
+        attempts_left = self.retry_count + 1
+        while attempts_left > 0:
+            try:
+                nc.keypairs.create(name, keydata)
+                break
+            except NovaConflict:
+                return
+            except Exception, e:
+                if attempts_left == 0:
+                    raise
+                print e
+                attempts_left -= 1
 
     def find_floating_network(self, ):
         nc = self.get_neutron_client()
