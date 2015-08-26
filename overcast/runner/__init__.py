@@ -512,7 +512,7 @@ class DeploymentRunner(object):
     def build_env_prefix(self, details):
         env_prefix = ''
         def add_environment(key, value):
-            return '%s=%s ' % (pipes.quote(key), pipes.quote(value))
+            return '%s=%s ' % (pipes.quote(key), pipes.quote(value or ''))
 
         env_prefix += add_environment('ALL_NODES',
                                       ' '.join([self.add_suffix(s) for s in self.nodes.keys()]))
