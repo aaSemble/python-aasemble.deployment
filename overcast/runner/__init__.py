@@ -202,9 +202,8 @@ class Node(object):
 
         nics = [{'port-id': port_id} for port_id in self.create_nics(self.info['networks'])]
 
-        volume = self.runner.get_cinder_client().volumes.create(size=self.info['disk'],
-                                                                imageRef=self.info['image'])
-        self.record_resource('volume', volume.id)
+        volume = self.runner.create_volume(size=self.info['disk'],
+                                           image_ref=self.info['image'])
 
         while volume.status != 'available':
             time.sleep(3)
@@ -404,6 +403,21 @@ class DeploymentRunner(object):
         nc = self.get_nova_client()
         nc.servers.delete(uuid)
 
+    def create_volume(self, size, image_ref):
+        cc = self.get_cinder_client()
+        attempts_left = self.retry_count + 1
+        while attempts_left > 0:
+            try:
+                volume = cc.volumes.create(size=size,
+                                           imageRef=image_ref)
+                self.record_resource('volume', volume.id)
+                return volume
+            except Exception, e:
+                if attempts_left == 0:
+                    raise
+                print e
+                attempts_left -= 1
+
     def create_port(self, name, network, secgroups):
         nc = self.get_neutron_client()
         network_id = self._map_network(network)
@@ -420,10 +434,18 @@ class DeploymentRunner(object):
 
     def create_keypair(self, name, keydata):
         nc = self.get_nova_client()
-        try:
-            nc.keypairs.create(name, keydata)
-        except NovaConflict:
-            pass
+        attempts_left = self.retry_count + 1
+        while attempts_left > 0:
+            try:
+                nc.keypairs.create(name, keydata)
+                break
+            except NovaConflict:
+                return
+            except Exception, e:
+                if attempts_left == 0:
+                    raise
+                print e
+                attempts_left -= 1
 
     def find_floating_network(self, ):
         nc = self.get_neutron_client()
@@ -490,7 +512,7 @@ class DeploymentRunner(object):
     def build_env_prefix(self, details):
         env_prefix = ''
         def add_environment(key, value):
-            return '%s=%s ' % (pipes.quote(key), pipes.quote(value))
+            return '%s=%s ' % (pipes.quote(key), pipes.quote(value or ''))
 
         env_prefix += add_environment('ALL_NODES',
                                       ' '.join([self.add_suffix(s) for s in self.nodes.keys()]))
