@@ -14,7 +14,7 @@
 #   limitations under the License.
 import re
 
-from overcast import exceptions
+from aasemble.deployment import exceptions
 
 def parse_time(time_string):
     matches = re.match('^(\d+)(\w?)', time_string)

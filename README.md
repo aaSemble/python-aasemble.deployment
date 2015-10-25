@@ -1,14 +1,14 @@
-# Overcast Deployment Engine
+# aaSemble Deployment Engine
 
-![Travis status](https://travis-ci.org/overcastde/python-overcast.svg)
+![Travis status](https://travis-ci.org/aaSemble/python-aasemble.svg)
 
-This is the Overcast Deployment Engine. It's a cloud centric deployment engine
+This is the aaSemble Deployment Engine. It's a cloud centric deployment engine
 that aims to facilitate deployment for both ephemeral environments (for
 integration testing) as well for long-lived environments. Support for the
 latter is still a little sketchy, but it's improving quickly.
 
-Overcast learns from a YAML file what needs to be done for your deployment.
-Here's the simplest possible example:
+aaSemble Deployment Engine learns from a YAML file what needs to be done for
+your deployment.  Here's the simplest possible example:
 
     main:
       - shell:
@@ -78,18 +78,18 @@ First all networks (and their subnets) are created. Then security groups. Then n
 
 You'll notice that `flavor` and `image` have human readable names. That's because these stack definitions should be agnostic to which cloud you're deploying to. To map these values to their correct values for a given cloud provider, a mapping file is passed in.
  
-## Invoking Overcast
+## Invoking aaSemble Deployment Engine
 
 Let's look at how you actually use all of this.
 
-    $ cd examples; overcast deploy --cfg test.yaml \
+    $ cd examples; aasemble deploy --cfg test.yaml \
                                    --key ${HOME}/.ssh/id_rsa.pub \
                                    --mappings mappings.ini \
                                    --suffix test1234 \
                                    --cleanup cleanup.log \
                                    main
 
-`overcast` expects you to have some environment variables set to be able to authenticate. They are `OS_USERNAME`, `OS_PASSWORD`, `OS_TENANT_NAME`, `OS_AUTH_URL`. Their expected value should be fairly obvious.
+`aasemble` expects you to have some environment variables set to be able to authenticate. They are `OS_USERNAME`, `OS_PASSWORD`, `OS_TENANT_NAME`, `OS_AUTH_URL`. Their expected value should be fairly obvious.
 
 We're passing in a mapping file: `mappings.ini`. Here's an example that matches the example stack file above:
 

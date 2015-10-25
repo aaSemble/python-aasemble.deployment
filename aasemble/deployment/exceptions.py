@@ -13,23 +13,23 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-class OvercastException(Exception):
+class AasembleDeploymentException(Exception):
     pass
 
-class InvalidTimeException(OvercastException):
+class InvalidTimeException(AasembleDeploymentException):
     pass
 
-class CommandTimedOutException(OvercastException):
+class CommandTimedOutException(AasembleDeploymentException):
     pass
 
-class CommandFailedException(OvercastException):
+class CommandFailedException(AasembleDeploymentException):
     pass
 
-class DuplicateResourceException(OvercastException):
+class DuplicateResourceException(AasembleDeploymentException):
     pass
 
-class ProvisionFailedException(OvercastException):
+class ProvisionFailedException(AasembleDeploymentException):
     pass
 
-class ProvisionTimedOutException(OvercastException):
+class ProvisionTimedOutException(AasembleDeploymentException):
     pass

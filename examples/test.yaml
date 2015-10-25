@@ -12,7 +12,7 @@ main:
   - shell:
       cmd: |
         echo -e "#!/bin/sh
-        while ! http_proxy=http://${OVERCAST_proxy_undercloud_fixed}:3128/ wget http://www.google.com/
+        while ! http_proxy=http://${AASEMBLE_proxy_undercloud_fixed}:3128/ wget http://www.google.com/
         do
             sleep 2
         done

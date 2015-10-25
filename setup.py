@@ -20,7 +20,7 @@ with open('requirements.txt', 'r') as fp:
     requirements = [x.strip() for x in fp]
 
 setup(
-    name='overcast',
+    name='aasemble.deployment',
     version='0.1a',
     long_description=__doc__,
     packages=find_packages(),
@@ -29,5 +29,5 @@ setup(
     install_requires=requirements,
     tests_require=['mock', 'nose'],
     test_suite='nose.collector',
-    entry_points={'console_scripts': ['overcast=overcast.runner:main']}
+    entry_points={'console_scripts': ['aasemble=aasemble.deployment.runner:main']}
 )

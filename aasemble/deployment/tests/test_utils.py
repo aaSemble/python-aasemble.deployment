@@ -14,8 +14,7 @@
 #   limitations under the License.
 import unittest
 
-from overcast import utils
-from overcast import exceptions
+from aasemble.deployment import utils, exceptions
 
 class UtilsTests(unittest.TestCase):
     def test_parse_time(self):

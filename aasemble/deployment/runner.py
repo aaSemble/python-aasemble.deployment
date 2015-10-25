@@ -28,14 +28,13 @@ import yaml
 from neutronclient.common.exceptions import Conflict as NeutronConflict
 from novaclient.exceptions import Conflict as NovaConflict
 
-from overcast import utils
-from overcast import exceptions
+from aasemble.deployment import utils, exceptions
 
-def load_yaml(f='.overcast.yaml'):
+def load_yaml(f='.aasemble.yaml'):
     with open(f, 'r') as fp:
         return yaml.load(fp)
 
-def load_mappings(f='.overcast.mappings.ini'):
+def load_mappings(f='.aasemble.mappings.ini'):
     with open(f, 'r') as fp:
         parser = ConfigParser.SafeConfigParser()
         parser.readfp(fp)
@@ -520,7 +519,7 @@ class DeploymentRunner(object):
         for node_name, node in self.nodes.iteritems():
             if node.info.get('export', False):
                 for port in node.ports:
-                    key = 'OVERCAST_%s_%s_fixed' % (node_name, port['network_name'])
+                    key = 'AASEMBLE_%s_%s_fixed' % (node_name, port['network_name'])
                     value = port['fixed_ip']
                     env_prefix += add_environment(key, value)
 
@@ -744,7 +743,7 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
 
     deploy_parser = subparsers.add_parser('deploy', help='Perform deployment')
     deploy_parser.set_defaults(func=deploy)
-    deploy_parser.add_argument('--cfg', default='.overcast.yaml',
+    deploy_parser.add_argument('--cfg', default='.aasemble.yaml',
                                help='Deployment config file')
     deploy_parser.add_argument('--suffix', help='Resource name suffix')
     deploy_parser.add_argument('--mappings', help='Resource map file')
