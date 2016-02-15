@@ -33,38 +33,52 @@ import yaml
 from aasemble.deployment import exceptions, utils
 
 
-def load_yaml(f='.aasemble.yaml'):
+def load_yaml(f='.aasemble.yaml', yaml_load=yaml.load):
     with open(f, 'r') as fp:
-        return yaml.load(fp)
+        return yaml_load(fp)
 
 
 def load_mappings(f='.aasemble.mappings.ini'):
     with open(f, 'r') as fp:
-        parser = configparser.SafeConfigParser()
-        parser.readfp(fp)
-        mappings = {}
-        for t in ('flavors', 'networks', 'images', 'routers'):
-            mappings[t] = {}
-            if parser.has_section(t):
-                mappings[t].update(parser.items(t))
+        return parse_mappings(fp)
 
-        return mappings
+
+def parse_mappings(fp):
+    parser = configparser.SafeConfigParser()
+    parser.readfp(fp)
+    mappings = {}
+    for t in ('flavors', 'networks', 'images', 'routers'):
+        mappings[t] = {}
+        if parser.has_section(t):
+            mappings[t].update(parser.items(t))
+
+    return mappings
 
 
 def find_weak_refs(stack):
+    images, flavors, networks = get_images_flavors_and_networks_from_stack(stack)
+    dynamic_networks = get_dynamic_networks_from_stack(stack)
+
+    return images, flavors, networks - dynamic_networks
+
+
+def get_images_flavors_and_networks_from_stack(stack):
     images = set()
     flavors = set()
     networks = set()
+
     for node_name, node in stack['nodes'].items():
         images.add(node['image'])
         flavors.add(node['flavor'])
         networks.update([n['network'] for n in node['networks']])
+    return images, flavors, networks
 
+
+def get_dynamic_networks_from_stack(stack):
     dynamic_networks = set()
     for network_name, network in stack.get('networks', {}).items():
         dynamic_networks.add(network_name)
-
-    return images, flavors, networks - dynamic_networks
+    return dynamic_networks
 
 
 def list_refs(args, stdout=sys.stdout):

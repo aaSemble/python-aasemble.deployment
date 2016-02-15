@@ -22,13 +22,6 @@ from six.moves import builtins
 
 import aasemble.deployment.runner
 
-yaml_data = '''---
-foo:
-  - bar
-  - baz:
-      wibble: []
-'''
-
 mappings_data = '''[images]
 trusty = 7cd9416f-9167-4371-a04a-a7939c5372ab
 
@@ -157,21 +150,27 @@ class MainTests(unittest.TestCase):
         self.dr = aasemble.deployment.runner.DeploymentRunner()
 
     def test_load_yaml(self):
-        with mock.patch.object(builtins, 'open') as m:
-            m.return_value.__enter__.return_value = StringIO(yaml_data)
-            self.assertEquals(aasemble.deployment.runner.load_yaml(),
-                              {'foo': ['bar', {'baz': {'wibble': []}}]})
-            m.assert_called_once_with('.aasemble.yaml', 'r')
+        mock_open = mock.mock_open()
+        yaml_load = mock.MagicMock()
 
-    def test_load_mappings(self):
-        with mock.patch.object(builtins, 'open') as m:
-            m.return_value.__enter__.return_value = StringIO(mappings_data)
-            self.assertEquals(aasemble.deployment.runner.load_mappings(),
-                              {'flavors': {'small': '34fb3740-d158-472c-8520-017278c75008'},
-                               'images': {'trusty': '7cd9416f-9167-4371-a04a-a7939c5372ab'},
-                               'networks': {'common': 'b2b2f6a6-228f-4d42-b4f7-0d340b3390e7'},
-                               'routers': {'*': '61047deb-b0bf-4668-8325-d853d5d53c40'}})
-            m.assert_called_once_with('.aasemble.mappings.ini', 'r')
+        with mock.patch.object(builtins, 'open', mock_open):
+            aasemble.deployment.runner.load_yaml(yaml_load=yaml_load)
+            yaml_load.assert_called_with(mock_open.return_value)
+
+    @mock.patch('aasemble.deployment.runner.parse_mappings')
+    def test_load_mappings(self, parse_mappings):
+        mock_open = mock.mock_open()
+        with mock.patch.object(builtins, 'open', mock_open):
+            aasemble.deployment.runner.load_mappings()
+            parse_mappings.assert_called_with(mock_open.return_value)
+
+    def test_parse_mappings(self):
+        fp = StringIO(mappings_data)
+        self.assertEquals(aasemble.deployment.runner.parse_mappings(fp),
+                          {'flavors': {'small': '34fb3740-d158-472c-8520-017278c75008'},
+                           'images': {'trusty': '7cd9416f-9167-4371-a04a-a7939c5372ab'},
+                           'networks': {'common': 'b2b2f6a6-228f-4d42-b4f7-0d340b3390e7'},
+                           'routers': {'*': '61047deb-b0bf-4668-8325-d853d5d53c40'}})
 
     def test_find_weak_refs(self):
         example_file = os.path.join(os.path.dirname(__file__),
