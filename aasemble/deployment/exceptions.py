@@ -13,23 +13,30 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
+
 class AasembleDeploymentException(Exception):
     pass
+
 
 class InvalidTimeException(AasembleDeploymentException):
     pass
 
+
 class CommandTimedOutException(AasembleDeploymentException):
     pass
+
 
 class CommandFailedException(AasembleDeploymentException):
     pass
 
+
 class DuplicateResourceException(AasembleDeploymentException):
     pass
 
+
 class ProvisionFailedException(AasembleDeploymentException):
     pass
+
 
 class ProvisionTimedOutException(AasembleDeploymentException):
     pass
