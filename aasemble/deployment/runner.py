@@ -14,25 +14,28 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-import argparse
 import ConfigParser
-import logging
+import argparse
 import os
 import pipes
 import select
 import subprocess
 import sys
 import time
-import yaml
 
 from neutronclient.common.exceptions import Conflict as NeutronConflict
+
 from novaclient.exceptions import Conflict as NovaConflict
 
-from aasemble.deployment import utils, exceptions
+import yaml
+
+from aasemble.deployment import exceptions, utils
+
 
 def load_yaml(f='.aasemble.yaml'):
     with open(f, 'r') as fp:
         return yaml.load(fp)
+
 
 def load_mappings(f='.aasemble.mappings.ini'):
     with open(f, 'r') as fp:
@@ -45,6 +48,7 @@ def load_mappings(f='.aasemble.mappings.ini'):
                 mappings[t].update(parser.items(t))
 
         return mappings
+
 
 def find_weak_refs(stack):
     images = set()
@@ -59,7 +63,8 @@ def find_weak_refs(stack):
     for network_name, network in stack.get('networks', {}).items():
         dynamic_networks.add(network_name)
 
-    return images, flavors, networks-dynamic_networks
+    return images, flavors, networks - dynamic_networks
+
 
 def list_refs(args, stdout=sys.stdout):
     stack = load_yaml(args.stack)
@@ -89,6 +94,7 @@ def list_refs(args, stdout=sys.stdout):
             stdout.write('None')
 
         stdout.write('\n')
+
 
 def run_cmd_once(shell_cmd, real_cmd, environment, deadline):
     proc = subprocess.Popen(shell_cmd,
@@ -151,7 +157,7 @@ class Node(object):
         if self.info.get('flavor') in self.runner.mappings.get('flavors', {}):
             self.info['flavor'] = self.runner.mappings['flavors'][self.info['flavor']]
 
-    def poll(self, desired_status = 'ACTIVE'):
+    def poll(self, desired_status='ACTIVE'):
         """
         This one poll nova and return the server status
         """
@@ -174,25 +180,25 @@ class Node(object):
             self.runner.delete_port(port['id'])
         self.ports = []
 
-        server = self.runner.delete_server(self.server_id)
+        self.runner.delete_server(self.server_id)
         self.server_id = None
 
     def create_nics(self, networks):
         nics = []
         for eth_idx, network in enumerate(networks):
-           port_name = '%s_eth%d' % (self.name, eth_idx)
-           port_info = self.runner.create_port(port_name, network['network'],
-                                               [self.runner.secgroups[secgroup] for secgroup in network.get('securitygroups', [])])
-           self.runner.record_resource('port', port_info['id'])
-           self.ports.append(port_info)
+            port_name = '%s_eth%d' % (self.name, eth_idx)
+            port_info = self.runner.create_port(port_name, network['network'],
+                                                [self.runner.secgroups[secgroup] for secgroup in network.get('securitygroups', [])])
+            self.runner.record_resource('port', port_info['id'])
+            self.ports.append(port_info)
 
-           if network.get('assign_floating_ip', False):
-              fip_id, fip_address = self.runner.create_floating_ip()
-              self.runner.associate_floating_ip(port_info['id'], fip_id)
-              port_info['floating_ip'] = fip_address
-              self.fip_ids.add(fip_id)
+            if network.get('assign_floating_ip', False):
+                fip_id, fip_address = self.runner.create_floating_ip()
+                self.runner.associate_floating_ip(port_info['id'], fip_id)
+                port_info['floating_ip'] = fip_address
+                self.fip_ids.add(fip_id)
 
-           nics.append(port_info['id'])
+            nics.append(port_info['id'])
         return nics
 
     def build(self):
@@ -223,6 +229,7 @@ class Node(object):
         for port in self.ports:
             if 'floating_ip' in port:
                 return port['floating_ip']
+
 
 class DeploymentRunner(object):
     def __init__(self, config=None, suffix=None, mappings=None, key=None,
@@ -293,9 +300,11 @@ class DeploymentRunner(object):
 
         suffix = self.add_suffix('')
         if suffix:
-            strip_suffix = lambda s:s[:-len(suffix)]
+            def strip_suffix(s):
+                return s[:-len(suffix)]
         else:
-            strip_suffix = lambda s:s
+            def strip_suffix(s):
+                return s
 
         network_name_by_id = {}
         for network in neutron.list_networks()['networks']:
@@ -364,7 +373,7 @@ class DeploymentRunner(object):
         nc = self.get_neutron_client()
         try:
             nc.delete_subnet(uuid)
-        except NeutronConflict, e:
+        except NeutronConflict:
             # This is probably due to the router port. Let's find it.
             router_found = False
             for port in nc.list_ports(device_owner='network:router_interface')['ports']:
@@ -411,10 +420,10 @@ class DeploymentRunner(object):
                                            imageRef=image_ref)
                 self.record_resource('volume', volume.id)
                 return volume
-            except Exception, e:
+            except Exception as e:
                 if attempts_left == 0:
                     raise
-                print e
+                print(e)
                 attempts_left -= 1
 
     def create_port(self, name, network, secgroups):
@@ -440,10 +449,10 @@ class DeploymentRunner(object):
                 break
             except NovaConflict:
                 return
-            except Exception, e:
+            except Exception as e:
                 if attempts_left == 0:
                     raise
-                print e
+                print(e)
                 attempts_left -= 1
 
     def find_floating_network(self, ):
@@ -510,6 +519,7 @@ class DeploymentRunner(object):
 
     def build_env_prefix(self, details):
         env_prefix = ''
+
         def add_environment(key, value):
             return '%s=%s ' % (pipes.quote(key), pipes.quote(value or ''))
 
@@ -590,7 +600,7 @@ class DeploymentRunner(object):
             fip_addr = self.nodes[details['node']].floating_ip
             return 'ssh -o StrictHostKeyChecking=no ubuntu@%s "%s bash"' % (fip_addr, env_prefix)
         else:
-             return '%s bash' % (env_prefix,)
+            return '%s bash' % (env_prefix,)
 
     def add_suffix(self, s):
         if self.suffix:
@@ -634,7 +644,7 @@ class DeploymentRunner(object):
         for base_node_name, node_info in stack['nodes'].items():
             if 'number' in node_info:
                 count = node_info.pop('number')
-                for idx in range(1, count+1):
+                for idx in range(1, count + 1):
                     node_name = '%s%d' % (base_node_name, idx)
                     name = self._create_node(node_name, node_info,
                                              keypair_name=keypair_name, userdata=userdata)
@@ -663,7 +673,6 @@ class DeploymentRunner(object):
         self.nodes[base_name].build()
         return base_name
 
-
     def _poll_pending_nodes(self, pending_nodes):
         done = set()
         for name in pending_nodes:
@@ -674,11 +683,10 @@ class DeploymentRunner(object):
                 if self.retry_count:
                     self.nodes[name].clean()
                     if self.nodes[name].attempts_left:
-                         self.nodes[name].build()
-                         continue
+                        self.nodes[name].build()
+                        continue
                 raise exceptions.ProvisionFailedException()
         return pending_nodes.difference(done)
-
 
     def deploy(self, name):
         for step in self.cfg[name]:
@@ -695,7 +703,6 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
         if args.key:
             with open(args.key, 'r') as fp:
                 key = fp.read()
-
 
         dr = DeploymentRunner(config=cfg,
                               suffix=args.suffix,
@@ -728,8 +735,8 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
             func = getattr(dr, 'delete_%s' % resource_type)
             try:
                 func(uuid)
-            except Exception, e:
-                print e
+            except Exception as e:
+                print(e)
 
     parser = argparse.ArgumentParser(description='Run deployment')
 

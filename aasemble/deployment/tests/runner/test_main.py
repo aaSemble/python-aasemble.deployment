@@ -12,12 +12,11 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
-from contextlib import nested
-import mock
 import os.path
 import unittest
 from StringIO import StringIO
-import yaml
+
+import mock
 
 import aasemble.deployment.runner
 
@@ -40,6 +39,7 @@ small = 34fb3740-d158-472c-8520-017278c75008
 [routers]
 * = 61047deb-b0bf-4668-8325-d853d5d53c40
 '''
+
 
 class NodeTests(unittest.TestCase):
     def setUp(self):
@@ -75,9 +75,9 @@ class NodeTests(unittest.TestCase):
 
         novaclient = get_nova_client.return_value
         novaclient.flavors.get.return_value = 'flavor_obj'
-        neutronclient = get_neutron_client.return_value
 
         cinderclient = get_cinder_client.return_value
+
         class Volume(object):
             def __init__(self, uuid):
                 self.id = uuid
@@ -182,32 +182,27 @@ class MainTests(unittest.TestCase):
 
     def test_run_cmd_once_simple(self):
         aasemble.deployment.runner.run_cmd_once(shell_cmd='bash',
-                                     real_cmd='true',
-                                     environment={},
-                                     deadline=None)
+                                                real_cmd='true',
+                                                environment={},
+                                                deadline=None)
 
     def test_run_cmd_once_fail(self):
         self.assertRaises(aasemble.deployment.exceptions.CommandFailedException,
-                          aasemble.deployment.runner.run_cmd_once, shell_cmd='bash',
-                                                        real_cmd='false',
-                                                        environment={},
-                                                        deadline=None)
+                          aasemble.deployment.runner.run_cmd_once,
+                          shell_cmd='bash', real_cmd='false', environment={}, deadline=None)
 
     def test_run_cmd_once_with_deadline(self):
         deadline = 10
         with mock.patch('aasemble.deployment.runner.time') as time_mock:
             time_mock.time.return_value = 9
             aasemble.deployment.runner.run_cmd_once(shell_cmd='bash',
-                                         real_cmd='true',
-                                         environment={},
-                                         deadline=deadline)
+                                                    real_cmd='true',
+                                                    environment={},
+                                                    deadline=deadline)
             time_mock.time.return_value = 11
             self.assertRaises(aasemble.deployment.exceptions.CommandTimedOutException,
                               aasemble.deployment.runner.run_cmd_once, shell_cmd='bash',
-                                                            real_cmd='true',
-                                                            environment={},
-                                                            deadline=deadline)
-
+                              real_cmd='true', environment={}, deadline=deadline)
 
     @mock.patch('aasemble.deployment.runner.run_cmd_once')
     def test_shell_step(self, run_cmd_once):
@@ -226,7 +221,7 @@ class MainTests(unittest.TestCase):
         details = {'cmd': 'true',
                    'retry-if-fails': True}
 
-        side_effects = [aasemble.deployment.exceptions.CommandFailedException()]*100 + [True]
+        side_effects = [aasemble.deployment.exceptions.CommandFailedException()] * 100 + [True]
         run_cmd_once.side_effect = side_effects
         self.dr.shell_step(details, {})
         self.assertEquals(list(run_cmd_once.side_effect), [])
@@ -239,13 +234,14 @@ class MainTests(unittest.TestCase):
                    'retry-delay': '5s'}
 
         curtime = [0]
+
         def sleep(s, curtime=curtime):
             curtime[0] += s
 
-        time.time.side_effect = lambda:curtime[0]
+        time.time.side_effect = lambda: curtime[0]
         time.sleep.side_effect = sleep
 
-        side_effects = [aasemble.deployment.exceptions.CommandFailedException()]*2 + [True]
+        side_effects = [aasemble.deployment.exceptions.CommandFailedException()] * 2 + [True]
         run_cmd_once.side_effect = side_effects
         self.dr.shell_step(details, {})
         self.assertEquals(list(run_cmd_once.side_effect), [])
@@ -257,7 +253,7 @@ class MainTests(unittest.TestCase):
                    'retry-if-fails': True,
                    'timeout': '10s'}
 
-        side_effects = [aasemble.deployment.exceptions.CommandTimedOutException()]*10 + [True]
+        side_effects = [aasemble.deployment.exceptions.CommandTimedOutException()] * 10 + [True]
         run_cmd_once.side_effect = side_effects
         self.dr.shell_step(details, {})
         self.assertEquals(list(run_cmd_once.side_effect), [])
@@ -286,7 +282,6 @@ class MainTests(unittest.TestCase):
         self.assertIn('AASEMBLE_node1_network2_fixed=2.3.4.5', env_prefix)
         self.assertNotIn('AASEMBLE_node2', env_prefix)
 
-
     @mock.patch('aasemble.deployment.runner.time')
     @mock.patch('aasemble.deployment.runner.run_cmd_once')
     def test_shell_step_retries_if_timedout_until_total_timeout(self,
@@ -298,7 +293,8 @@ class MainTests(unittest.TestCase):
 
         time.time.return_value = 10
 
-        side_effects = [aasemble.deployment.exceptions.CommandTimedOutException()]*2
+        side_effects = [aasemble.deployment.exceptions.CommandTimedOutException()] * 2
+
         def side_effect(*args, **kwargs):
             if len(side_effects) < 2:
                 time.time.return_value = 100
@@ -355,10 +351,10 @@ class MainTests(unittest.TestCase):
 
         neutron.list_networks.return_value = {'networks': []}
         neutron.list_security_groups.return_value = {'security_groups':
-                                                          [{'name': 'somename',
-                                                            'id': 'uuid1'},
-                                                           {'name': 'somename',
-                                                            'id': 'uuid2'}]}
+                                                     [{'name': 'somename',
+                                                       'id': 'uuid1'},
+                                                      {'name': 'somename',
+                                                       'id': 'uuid2'}]}
 
         nova.servers.list.return_value = []
 
@@ -373,10 +369,10 @@ class MainTests(unittest.TestCase):
 
         neutron.list_networks.return_value = {'networks': []}
         neutron.list_security_groups.return_value = {'security_groups':
-                                                          [{'name': 'somename_foo',
-                                                            'id': 'uuid1'},
-                                                           {'name': 'somename_foo',
-                                                            'id': 'uuid2'}]}
+                                                     [{'name': 'somename_foo',
+                                                       'id': 'uuid1'},
+                                                      {'name': 'somename_foo',
+                                                       'id': 'uuid2'}]}
         nova.servers.list.return_value = []
 
         self.dr.suffix = 'bar'
@@ -502,7 +498,6 @@ class MainTests(unittest.TestCase):
         for node in expected_nodes:
             self.assertIn(node, self.dr.nodes)
 
-
     @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
     def test_find_floating_network(self, get_neutron_client):
         nc = get_neutron_client.return_value
@@ -530,18 +525,18 @@ class MainTests(unittest.TestCase):
     def test_create_port(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.create_port.return_value = {'port': {
-                                         'status': 'DOWN',
-                                         'name': '1298eefe-7654-49e0-8d38-47a6e4f75bd4',
-                                         'admin_state_up': True,
-                                         'network_id': '1fcda898-ae86-462e-a2d0-2cc2384b5898',
-                                         'tenant_id': 'c5f19d06a4194f138c873e97950d1f3c',
-                                         "device_owner": "",
-                                         "mac_address": "02:12:98:ee:fe:76",
-                                         "fixed_ips": [{"subnet_id": "3bc91c43-06a0-4a99-8e99-83703818d908",
-                                                        "ip_address": "10.0.0.4"}],
-                                         "id": "1298eefe-7654-49e0-8d38-47a6e4f75bd4",
-                                         "security_groups": ["7acbf890-e3c0-41a5-880d-ebeb6b1ded5e"],
-                                         "device_id": ""}}
+                                       'status': 'DOWN',
+                                       'name': '1298eefe-7654-49e0-8d38-47a6e4f75bd4',
+                                       'admin_state_up': True,
+                                       'network_id': '1fcda898-ae86-462e-a2d0-2cc2384b5898',
+                                       'tenant_id': 'c5f19d06a4194f138c873e97950d1f3c',
+                                       "device_owner": "",
+                                       "mac_address": "02:12:98:ee:fe:76",
+                                       "fixed_ips": [{"subnet_id": "3bc91c43-06a0-4a99-8e99-83703818d908",
+                                                      "ip_address": "10.0.0.4"}],
+                                       "id": "1298eefe-7654-49e0-8d38-47a6e4f75bd4",
+                                       "security_groups": ["7acbf890-e3c0-41a5-880d-ebeb6b1ded5e"],
+                                       "device_id": ""}}
 
         port = self.dr.create_port('port_name', 'network_id',
                                    ["7acbf890-e3c0-41a5-880d-ebeb6b1ded5e"])
@@ -555,7 +550,6 @@ class MainTests(unittest.TestCase):
                                  'network_name': 'network_id',
                                  'mac': '02:12:98:ee:fe:76',
                                  'fixed_ip': '10.0.0.4'})
-
 
     @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
     def test_create_network(self, get_neutron_client):
@@ -644,16 +638,17 @@ class MainTests(unittest.TestCase):
                             'flavors': {'small': 'smallid'}}
 
         node = aasemble.deployment.runner.Node('test1_x123',
-                                    {'image': 'trusty',
-                                     'flavor': 'small',
-                                     'disk': 10,
-                                     'networks': [{'network': 'ephemeral', 'assign_floating_ip': True},
-                                                  {'network': 'passedthrough'}]},
-                                    userdata='foo',
-                                    keypair='key_x123',
-                                    runner=self.dr)
+                                               {'image': 'trusty',
+                                                'flavor': 'small',
+                                                'disk': 10,
+                                                'networks': [{'network': 'ephemeral', 'assign_floating_ip': True},
+                                                             {'network': 'passedthrough'}]},
+                                               userdata='foo',
+                                               keypair='key_x123',
+                                               runner=self.dr)
 
         cinderclient = get_cinder_client.return_value
+
         class Volume(object):
             def __init__(self, uuid):
                 self.id = uuid
@@ -691,6 +686,7 @@ class MainTests(unittest.TestCase):
     def _test_list_refs(self, tmpl_, expected_value):
         example_file = os.path.join(os.path.dirname(__file__),
                                     'examplestack1.yaml')
+
         class Args(object):
             stack = example_file
             tmpl = tmpl_
@@ -699,7 +695,6 @@ class MainTests(unittest.TestCase):
         output = StringIO()
         aasemble.deployment.runner.list_refs(args, output)
         self.assertEquals(output.getvalue(), expected_value)
-
 
     @mock.patch('aasemble.deployment.runner.Node.build')
     def test__create_node(self, node_build):
@@ -769,7 +764,6 @@ class MainTests(unittest.TestCase):
         self.assertRaises(aasemble.deployment.exceptions.ProvisionFailedException,
                           self.dr._poll_pending_nodes, pending_nodes)
 
-
     @mock.patch('aasemble.deployment.runner.DeploymentRunner.create_network')
     @mock.patch('aasemble.deployment.runner.DeploymentRunner.create_security_group')
     @mock.patch('aasemble.deployment.runner.DeploymentRunner._create_node')
@@ -803,7 +797,7 @@ class MainTests(unittest.TestCase):
                                      {'networks': [{'securitygroups': ['jumphost'],
                                                     'network': 'default',
                                                     'assign_floating_ip': True},
-                                               {'network': 'undercloud'}],
+                                                   {'network': 'undercloud'}],
                                       'flavor': 'bootstrap',
                                       'image': 'trusty'},
                                      userdata=None,

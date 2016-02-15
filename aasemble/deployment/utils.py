@@ -16,6 +16,7 @@ import re
 
 from aasemble.deployment import exceptions
 
+
 def parse_time(time_string):
     matches = re.match('^(\d+)(\w?)', time_string)
     if not matches:
@@ -26,10 +27,9 @@ def parse_time(time_string):
     multipliers = {'s': 1,
                    '': 1,
                    'm': 60,
-                   'h': 60*60}
+                   'h': 60 * 60}
     try:
         multiplier = multipliers[unit]
     except KeyError:
         raise exceptions.InvalidTimeException()
     return count * multiplier
-
