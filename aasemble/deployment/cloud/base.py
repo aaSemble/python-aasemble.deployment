@@ -1,0 +1,2 @@
+class CloudDriver(object):
+    pass
