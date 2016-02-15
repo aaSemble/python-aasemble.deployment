@@ -3,4 +3,3 @@ python-keystoneclient
 python-neutronclient
 python-cinderclient
 pyYAML
-mock

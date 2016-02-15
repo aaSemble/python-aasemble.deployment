@@ -14,9 +14,11 @@
 #   limitations under the License.
 import os.path
 import unittest
-from StringIO import StringIO
 
 import mock
+
+from six import StringIO
+from six.moves import builtins
 
 import aasemble.deployment.runner
 
@@ -155,14 +157,14 @@ class MainTests(unittest.TestCase):
         self.dr = aasemble.deployment.runner.DeploymentRunner()
 
     def test_load_yaml(self):
-        with mock.patch('__builtin__.open') as m:
+        with mock.patch.object(builtins, 'open') as m:
             m.return_value.__enter__.return_value = StringIO(yaml_data)
             self.assertEquals(aasemble.deployment.runner.load_yaml(),
                               {'foo': ['bar', {'baz': {'wibble': []}}]})
             m.assert_called_once_with('.aasemble.yaml', 'r')
 
     def test_load_mappings(self):
-        with mock.patch('__builtin__.open') as m:
+        with mock.patch.object(builtins, 'open') as m:
             m.return_value.__enter__.return_value = StringIO(mappings_data)
             self.assertEquals(aasemble.deployment.runner.load_mappings(),
                               {'flavors': {'small': '34fb3740-d158-472c-8520-017278c75008'},

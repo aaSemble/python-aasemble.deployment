@@ -14,7 +14,6 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 
-import ConfigParser
 import argparse
 import os
 import pipes
@@ -26,6 +25,8 @@ import time
 from neutronclient.common.exceptions import Conflict as NeutronConflict
 
 from novaclient.exceptions import Conflict as NovaConflict
+
+from six.moves import configparser
 
 import yaml
 
@@ -39,7 +40,7 @@ def load_yaml(f='.aasemble.yaml'):
 
 def load_mappings(f='.aasemble.mappings.ini'):
     with open(f, 'r') as fp:
-        parser = ConfigParser.SafeConfigParser()
+        parser = configparser.SafeConfigParser()
         parser.readfp(fp)
         mappings = {}
         for t in ('flavors', 'networks', 'images', 'routers'):
@@ -70,7 +71,7 @@ def list_refs(args, stdout=sys.stdout):
     stack = load_yaml(args.stack)
     images, flavors, networks = find_weak_refs(stack)
     if args.tmpl:
-        cfg = ConfigParser.SafeConfigParser()
+        cfg = configparser.SafeConfigParser()
         cfg.add_section('images')
         cfg.add_section('flavors')
         for image in images:
@@ -106,7 +107,7 @@ def run_cmd_once(shell_cmd, real_cmd, environment, deadline):
         if stdin:
             _, rfds, xfds = select.select([], [proc.stdin], [proc.stdin], 1)
             if rfds:
-                proc.stdin.write(stdin[0])
+                proc.stdin.write(stdin[0].encode('utf-8'))
                 stdin = stdin[1:]
                 if not stdin:
                     proc.stdin.close()
@@ -526,7 +527,8 @@ class DeploymentRunner(object):
         env_prefix += add_environment('ALL_NODES',
                                       ' '.join([self.add_suffix(s) for s in self.nodes.keys()]))
 
-        for node_name, node in self.nodes.iteritems():
+        for node_name in self.nodes:
+            node = self.nodes[node_name]
             if node.info.get('export', False):
                 for port in node.ports:
                     key = 'AASEMBLE_%s_%s_fixed' % (node_name, port['network_name'])
