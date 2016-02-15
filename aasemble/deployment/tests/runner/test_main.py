@@ -38,10 +38,11 @@ small = 34fb3740-d158-472c-8520-017278c75008
 
 class NodeTests(unittest.TestCase):
     def setUp(self):
-        self.dr = aasemble.deployment.runner.DeploymentRunner()
+        cloud_driver = aasemble.deployment.runner.CloudDriver()
+        self.dr = aasemble.deployment.runner.DeploymentRunner(cloud_driver=cloud_driver)
         self.node = aasemble.deployment.runner.Node('name', {}, self.dr)
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_nova_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     def test_poll(self, get_nova_client):
         nc = get_nova_client.return_value
         self.node.server_id = 'someuuid'
@@ -57,9 +58,9 @@ class NodeTests(unittest.TestCase):
                           'server.get() was called even though expected '
                           'state already reached')
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_nova_client')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_cinder_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_cinder_client')
     @mock.patch('aasemble.deployment.runner.Node.create_nics')
     @mock.patch('aasemble.deployment.runner.time')
     def test_build(self, time, create_nics, get_cinder_client, get_neutron_client, get_nova_client):
@@ -147,7 +148,8 @@ class NodeTests(unittest.TestCase):
 
 class MainTests(unittest.TestCase):
     def setUp(self):
-        self.dr = aasemble.deployment.runner.DeploymentRunner()
+        cloud_driver = aasemble.deployment.runner.CloudDriver()
+        self.dr = aasemble.deployment.runner.DeploymentRunner(cloud_driver=cloud_driver)
 
     def test_load_yaml(self):
         mock_open = mock.mock_open()
@@ -310,8 +312,8 @@ class MainTests(unittest.TestCase):
                           self.dr.shell_step, details, {})
         self.assertEquals(side_effects, [])
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_nova_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     def test_detect_existing_resources_network_conflict(self, get_nova_client, get_neutron_client):
         neutron = get_neutron_client.return_value
         nova = get_nova_client.return_value
@@ -327,8 +329,8 @@ class MainTests(unittest.TestCase):
         self.assertRaises(aasemble.deployment.exceptions.DuplicateResourceException,
                           self.dr.detect_existing_resources)
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_nova_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     def test_detect_existing_resources_network_conflict_in_other_suffix(self, get_nova_client, get_neutron_client):
         neutron = get_neutron_client.return_value
         nova = get_nova_client.return_value
@@ -344,8 +346,8 @@ class MainTests(unittest.TestCase):
         self.dr.suffix = 'bar'
         self.dr.detect_existing_resources()
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_nova_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     def test_detect_existing_resources_secgroup_conflict(self, get_nova_client, get_neutron_client):
         neutron = get_neutron_client.return_value
         nova = get_nova_client.return_value
@@ -362,8 +364,8 @@ class MainTests(unittest.TestCase):
         self.assertRaises(aasemble.deployment.exceptions.DuplicateResourceException,
                           self.dr.detect_existing_resources)
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_nova_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     def test_detect_existing_resources_secgroup_conflict_in_other_suffix(self, get_nova_client, get_neutron_client):
         neutron = get_neutron_client.return_value
         nova = get_nova_client.return_value
@@ -379,8 +381,8 @@ class MainTests(unittest.TestCase):
         self.dr.suffix = 'bar'
         self.dr.detect_existing_resources()
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_nova_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     def test_detect_existing_resources_server_conflict(self, get_nova_client, get_neutron_client):
         neutron = get_neutron_client.return_value
         nova = get_nova_client.return_value
@@ -399,8 +401,8 @@ class MainTests(unittest.TestCase):
         self.assertRaises(aasemble.deployment.exceptions.DuplicateResourceException,
                           self.dr.detect_existing_resources)
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_nova_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     def test_detect_existing_resources_server_conflict_in_other_suffix(self, get_nova_client, get_neutron_client):
         neutron = get_neutron_client.return_value
         nova = get_nova_client.return_value
@@ -432,8 +434,8 @@ class MainTests(unittest.TestCase):
                                              {'testnet2': '123123123-524c-406b-b7c1-987665441d22'},
                                              ['server1'])
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_nova_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     def _test_detect_existing_resources(self, suffix, expected_secgroups, expected_networks, expected_nodes,
                                         get_nova_client, get_neutron_client):
         neutron = get_neutron_client.return_value
@@ -499,30 +501,7 @@ class MainTests(unittest.TestCase):
         for node in expected_nodes:
             self.assertIn(node, self.dr.nodes)
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
-    def test_find_floating_network(self, get_neutron_client):
-        nc = get_neutron_client.return_value
-        nc.list_networks.return_value = {'networks': [{'id': 'netuuid'}]}
-
-        self.assertEquals(self.dr.find_floating_network(), 'netuuid')
-
-        nc.list_networks.assert_called_once_with(**{'router:external': True})
-
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.find_floating_network')
-    def test_create_floating_ip(self, find_floating_network, get_neutron_client):
-        nc = get_neutron_client.return_value
-
-        find_floating_network.return_value = 'netuuid'
-
-        nc.create_floatingip.return_value = {'floatingip': {'id': 'theuuid',
-                                                            'floating_ip_address': '1.2.3.4'}}
-
-        self.assertEquals(self.dr.create_floating_ip(), ('theuuid', '1.2.3.4'))
-
-        nc.create_floatingip.assert_called_once_with({'floatingip': {'floating_network_id': 'netuuid'}})
-
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
     def test_create_port(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.create_port.return_value = {'port': {
@@ -552,7 +531,7 @@ class MainTests(unittest.TestCase):
                                  'mac': '02:12:98:ee:fe:76',
                                  'fixed_ip': '10.0.0.4'})
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
     def test_create_network(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.create_network.return_value = {'network': {'id': 'theuuid'}}
@@ -570,7 +549,7 @@ class MainTests(unittest.TestCase):
         self.dr.record_resource.assert_any_call('network', 'theuuid')
         self.dr.record_resource.assert_any_call('subnet', 'thesubnetuuid')
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
     def test_create_security_group(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.create_security_group.return_value = {'security_group': {'id': 'theuuid'}}
@@ -606,7 +585,7 @@ class MainTests(unittest.TestCase):
         self.dr.record_resource.assert_any_call('secgroup_rule', 'theruleuuid1')
         self.dr.record_resource.assert_any_call('secgroup_rule', 'theruleuuid2')
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
     def test_create_security_group_without_rules(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.create_security_group.return_value = {'security_group': {'id': 'theuuid'}}
@@ -615,9 +594,9 @@ class MainTests(unittest.TestCase):
         nc.create_security_group.assert_called_once_with({'security_group': {'name': 'secgroupname'}})
 
     @mock.patch('aasemble.deployment.runner.DeploymentRunner.create_port')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_nova_client')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_cinder_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_cinder_client')
     @mock.patch('aasemble.deployment.runner.time')
     def test_create_node(self, time, get_cinder_client, get_neutron_client, get_nova_client, create_port):
         nc = get_nova_client.return_value
@@ -818,7 +797,7 @@ class MainTests(unittest.TestCase):
                                      userdata=None,
                                      keypair_name=None)
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_nova_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     def test_delete_server(self, get_nova_client):
         nc = get_nova_client.return_value
 
@@ -826,7 +805,7 @@ class MainTests(unittest.TestCase):
 
         nc.servers.delete.assert_called_with('someuuid')
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_nova_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     def test_delete_keypair(self, get_nova_client):
         nc = get_nova_client.return_value
 
@@ -854,7 +833,7 @@ class MainTests(unittest.TestCase):
         self._test_delete_neutron_resource('secgroup_rule',
                                            neutron_type='security_group_rule')
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.get_neutron_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
     def _test_delete_neutron_resource(self, resource_type, get_neutron_client, neutron_type=None):
         nc = get_neutron_client.return_value
 
@@ -864,3 +843,31 @@ class MainTests(unittest.TestCase):
         neutron_type = neutron_type or resource_type
         nc_delete_method = getattr(nc, 'delete_%s' % (neutron_type,))
         nc_delete_method.assert_called_with('someuuid')
+
+
+class CloudDriverTests(unittest.TestCase):
+    def setUp(self):
+        self.cloud_driver = aasemble.deployment.runner.CloudDriver()
+
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
+    def test_find_floating_network(self, get_neutron_client):
+        nc = get_neutron_client.return_value
+        nc.list_networks.return_value = {'networks': [{'id': 'netuuid'}]}
+
+        self.assertEquals(self.cloud_driver.find_floating_network(), 'netuuid')
+
+        nc.list_networks.assert_called_once_with(**{'router:external': True})
+
+    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.find_floating_network')
+    def test_create_floating_ip(self, find_floating_network, get_neutron_client):
+        nc = get_neutron_client.return_value
+
+        find_floating_network.return_value = 'netuuid'
+
+        nc.create_floatingip.return_value = {'floatingip': {'id': 'theuuid',
+                                                            'floating_ip_address': '1.2.3.4'}}
+
+        self.assertEquals(self.cloud_driver.create_floating_ip(record_resource=mock.MagicMock()), ('theuuid', '1.2.3.4'))
+
+        nc.create_floatingip.assert_called_once_with({'floatingip': {'floating_network_id': 'netuuid'}})

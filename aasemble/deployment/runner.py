@@ -150,117 +150,7 @@ def get_creds_from_env():
     return d
 
 
-class Node(object):
-    def __init__(self, name, info, runner, keypair=None, userdata=None):
-        self.record_resource = lambda *args, **kwargs: None
-        self.name = name
-        self.info = info
-        self.runner = runner
-        self.keypair = keypair
-        self.userdata = userdata
-        self.server_id = None
-        self.fip_ids = set()
-        self.ports = []
-        self.server_status = None
-        self.image = None
-        self.flavor = None
-        self.attempts_left = runner.retry_count + 1
-
-        if self.info.get('image') in self.runner.mappings.get('images', {}):
-            self.info['image'] = self.runner.mappings['images'][self.info['image']]
-
-        if self.info.get('flavor') in self.runner.mappings.get('flavors', {}):
-            self.info['flavor'] = self.runner.mappings['flavors'][self.info['flavor']]
-
-    def poll(self, desired_status='ACTIVE'):
-        """
-        This one poll nova and return the server status
-        """
-        if self.server_status != desired_status:
-            self.server_status = self.runner.get_nova_client().servers.get(self.server_id).status
-        return self.server_status
-
-    def clean(self):
-        """
-        Cleaner: This method remove server, fip, port etc.
-        We could keep fip and may be ports (ports are getting deleted with current
-        neutron client), but that is going to be bit more complex to make sure
-        right port is assigned to right fip etc, so atm, just removing them.
-        """
-        for fip_id in self.fip_ids:
-            self.runner.delete_floatingip(fip_id)
-        self.fip_ids = set()
-
-        for port in self.ports:
-            self.runner.delete_port(port['id'])
-        self.ports = []
-
-        self.runner.delete_server(self.server_id)
-        self.server_id = None
-
-    def create_nics(self, networks):
-        nics = []
-        for eth_idx, network in enumerate(networks):
-            port_name = '%s_eth%d' % (self.name, eth_idx)
-            port_info = self.runner.create_port(port_name, network['network'],
-                                                [self.runner.secgroups[secgroup] for secgroup in network.get('securitygroups', [])])
-            self.runner.record_resource('port', port_info['id'])
-            self.ports.append(port_info)
-
-            if network.get('assign_floating_ip', False):
-                fip_id, fip_address = self.runner.create_floating_ip()
-                self.runner.associate_floating_ip(port_info['id'], fip_id)
-                port_info['floating_ip'] = fip_address
-                self.fip_ids.add(fip_id)
-
-            nics.append(port_info['id'])
-        return nics
-
-    def build(self):
-        if self.flavor is None:
-            self.flavor = self.runner.get_nova_client().flavors.get(self.info['flavor'])
-
-        nics = [{'port-id': port_id} for port_id in self.create_nics(self.info['networks'])]
-
-        volume = self.runner.create_volume(size=self.info['disk'],
-                                           image_ref=self.info['image'])
-
-        while volume.status != 'available':
-            time.sleep(3)
-            volume = self.runner.get_cinder_client().volumes.get(volume.id)
-
-        bdm = {'vda': '%s:::1' % (volume.id,)}
-
-        server = self.runner.get_nova_client().servers.create(self.name, image=None,
-                                                              block_device_mapping=bdm,
-                                                              flavor=self.flavor, nics=nics,
-                                                              key_name=self.keypair, userdata=self.userdata)
-        self.runner.record_resource('server', server.id)
-        self.server_id = server.id
-        self.attempts_left -= 1
-
-    @property
-    def floating_ip(self):
-        for port in self.ports:
-            if 'floating_ip' in port:
-                return port['floating_ip']
-
-
-class DeploymentRunner(object):
-    def __init__(self, config=None, suffix=None, mappings=None, key=None,
-                 record_resource=None, retry_count=0):
-        self.cfg = config
-        self.suffix = suffix
-        self.mappings = mappings or {}
-        self.key = key
-        self.retry_count = retry_count
-        self.record_resource = lambda *args, **kwargs: None
-
-        self.conncache = {}
-        self.networks = {}
-        self.secgroups = {}
-        self.nodes = {}
-
+class CloudDriver(object):
     def get_keystone_session(self):
         from keystoneclient import session as keystone_session
         from keystoneclient.auth.identity import v2 as keystone_auth_id_v2
@@ -303,86 +193,26 @@ class DeploymentRunner(object):
             self.conncache['neutron'] = neutronclient.Client('2.0', **kwargs)
         return self.conncache['neutron']
 
-    def _map_network(self, network):
-        if network in self.mappings.get('networks', {}):
-            return self.mappings['networks'][network]
-        elif network in self.networks:
-            return self.networks[network]
-        return network
+    def get_networks(self):
+        return self.get_neutron_client().list_networks()['networks']
 
-    def detect_existing_resources(self):
-        neutron = self.get_neutron_client()
+    def get_ports(self):
+        return self.get_neutron_client().list_ports()['ports']
 
-        suffix = self.add_suffix('')
-        if suffix:
-            def strip_suffix(s):
-                return s[:-len(suffix)]
-        else:
-            def strip_suffix(s):
-                return s
+    def get_floating_ips(self):
+        return self.get_neutron_client().list_floatingips()['floatingips']
 
-        network_name_by_id = {}
-        for network in neutron.list_networks()['networks']:
-            if network['name'].endswith(suffix):
-                base_name = strip_suffix(network['name'])
-                if base_name in self.networks:
-                    raise exceptions.DuplicateResourceException('Network', network['name'])
-
-                self.networks[base_name] = network['id']
-                network_name_by_id[network['id']] = base_name
-
-        raw_ports = [{'id': port['id'],
-                      'fixed_ip': port['fixed_ips'][0]['ip_address'],
-                      'mac': port['mac_address'],
-                      'network_name': network_name_by_id.get(port['network_id'], port['network_id'])}
-                     for port in neutron.list_ports()['ports']]
-        ports_by_id = {port['id']: port for port in raw_ports}
-        ports_by_mac = {port['mac']: port for port in raw_ports}
-
-        for fip in neutron.list_floatingips()['floatingips']:
-            port_id = fip['port_id']
-            if not port_id:
-                continue
-            port = ports_by_id[port_id]
-            port['floating_ip'] = fip['floating_ip_address']
-
-        for secgroup in neutron.list_security_groups()['security_groups']:
-            if secgroup['name'].endswith(suffix):
-                base_name = strip_suffix(secgroup['name'])
-                if base_name in self.secgroups:
-                    raise exceptions.DuplicateResourceException('Security Group', secgroup['name'])
-
-                self.secgroups[base_name] = secgroup['id']
-
-        nova = self.get_nova_client()
-
-        for node in nova.servers.list():
-            if node.name.endswith(suffix):
-                base_name = strip_suffix(node.name)
-                if base_name in self.nodes:
-                    raise exceptions.DuplicateResourceException('Node', node.name)
-
-                self.nodes[base_name] = Node(node.name, {}, self)
-                for address in node.addresses.values():
-                    mac = address[0]['OS-EXT-IPS-MAC:mac_addr']
-                    port = ports_by_mac[mac]
-                    self.nodes[base_name].ports.append(port)
-
-    def delete_volume(self, uuid):
-        cc = self.get_cinder_client()
-        cc.volumes.delete(uuid)
+    def get_security_groups(self):
+        return self.get_neutron_client().list_security_groups()['security_groups']
 
     def delete_port(self, uuid):
-        nc = self.get_neutron_client()
-        nc.delete_port(uuid)
+        self.get_neutron_client().delete_port(uuid)
 
     def delete_network(self, uuid):
-        nc = self.get_neutron_client()
-        nc.delete_network(uuid)
+        self.get_neutron_client().delete_network(uuid)
 
     def delete_router(self, uuid):
-        nc = self.get_neutron_client()
-        nc.delete_router(uuid)
+        self.get_neutron_client().delete_router(uuid)
 
     def delete_subnet(self, uuid):
         nc = self.get_neutron_client()
@@ -407,8 +237,7 @@ class DeploymentRunner(object):
                 raise
 
     def delete_secgroup(self, uuid):
-        nc = self.get_neutron_client()
-        nc.delete_security_group(uuid)
+        self.get_neutron_client().delete_security_group(uuid)
 
     def delete_secgroup_rule(self, uuid):
         nc = self.get_neutron_client()
@@ -418,32 +247,8 @@ class DeploymentRunner(object):
         nc = self.get_neutron_client()
         nc.delete_floatingip(uuid)
 
-    def delete_keypair(self, name):
-        nc = self.get_nova_client()
-        nc.keypairs.delete(name)
-
-    def delete_server(self, uuid):
-        nc = self.get_nova_client()
-        nc.servers.delete(uuid)
-
-    def create_volume(self, size, image_ref):
-        cc = self.get_cinder_client()
-        attempts_left = self.retry_count + 1
-        while attempts_left > 0:
-            try:
-                volume = cc.volumes.create(size=size,
-                                           imageRef=image_ref)
-                self.record_resource('volume', volume.id)
-                return volume
-            except Exception as e:
-                if attempts_left == 0:
-                    raise
-                print(e)
-                attempts_left -= 1
-
-    def create_port(self, name, network, secgroups):
+    def create_port(self, name, network, network_id, secgroups):
         nc = self.get_neutron_client()
-        network_id = self._map_network(network)
         port = {'name': name,
                 'admin_state_up': True,
                 'network_id': network_id,
@@ -455,9 +260,81 @@ class DeploymentRunner(object):
                 'mac': port['mac_address'],
                 'network_name': network}
 
-    def create_keypair(self, name, keydata):
+    def find_floating_network(self, ):
+        nc = self.get_neutron_client()
+        networks = nc.list_networks(**{'router:external': True})
+        return networks['networks'][0]['id']
+
+    def create_floating_ip(self, record_resource):
+        nc = self.get_neutron_client()
+        floating_network = self.find_floating_network()
+        floatingip = {'floating_network_id': floating_network}
+        floatingip = nc.create_floatingip({'floatingip': floatingip})
+        record_resource('floatingip', floatingip['floatingip']['id'])
+        return (floatingip['floatingip']['id'],
+                floatingip['floatingip']['floating_ip_address'])
+
+    def associate_floating_ip(self, port_id, fip_id):
+        nc = self.get_neutron_client()
+        nc.update_floatingip(fip_id, {'floatingip': {'port_id': port_id}})
+
+    def create_network(self, name, info, mappings, record_resource):
+        nc = self.get_neutron_client()
+        network = {'name': name, 'admin_state_up': True}
+        network = nc.create_network({'network': network})
+        record_resource('network', network['network']['id'])
+
+        subnet = {"network_id": network['network']['id'],
+                  "ip_version": 4,
+                  "cidr": info['cidr'],
+                  "name": name}
+        subnet = nc.create_subnet({'subnet': subnet})['subnet']
+        record_resource('subnet', subnet['id'])
+
+        if '*' in mappings.get('routers', {}):
+            nc.add_interface_router(mappings['routers']['*'], {'subnet_id': subnet['id']})
+
+        return network['network']['id']
+
+    def create_security_group(self, base_name, name, info, record_resource, secgroups):
+        nc = self.get_neutron_client()
+
+        secgroup = {'name': name}
+        secgroup = nc.create_security_group({'security_group': secgroup})['security_group']
+
+        record_resource('secgroup', secgroup['id'])
+        secgroups[base_name] = secgroup['id']
+
+        for rule in (info or []):
+            secgroup_rule = {"direction": "ingress",
+                             "ethertype": "IPv4",
+                             "port_range_min": rule['from_port'],
+                             "port_range_max": rule['to_port'],
+                             "protocol": rule['protocol'],
+                             "security_group_id": secgroup['id']}
+
+            if 'source_group' in rule:
+                secgroup_rule['remote_group_id'] = secgroups.get(rule['source_group'], rule['source_group'])
+            else:
+                secgroup_rule['remote_ip_prefix'] = rule['cidr']
+
+            secgroup_rule = nc.create_security_group_rule({'security_group_rule': secgroup_rule})
+            record_resource('secgroup_rule', secgroup_rule['security_group_rule']['id'])
+
+    def get_servers(self):
+        return self.get_nova_client().servers.list()
+
+    def delete_keypair(self, name):
         nc = self.get_nova_client()
-        attempts_left = self.retry_count + 1
+        nc.keypairs.delete(name)
+
+    def delete_server(self, uuid):
+        nc = self.get_nova_client()
+        nc.servers.delete(uuid)
+
+    def create_keypair(self, name, keydata, retry_count):
+        nc = self.get_nova_client()
+        attempts_left = retry_count + 1
         while attempts_left > 0:
             try:
                 nc.keypairs.create(name, keydata)
@@ -470,67 +347,249 @@ class DeploymentRunner(object):
                 print(e)
                 attempts_left -= 1
 
-    def find_floating_network(self, ):
-        nc = self.get_neutron_client()
-        networks = nc.list_networks(**{'router:external': True})
-        return networks['networks'][0]['id']
+    def create_volume(self, size, image_ref, retry_count, record_resource):
+        cc = self.get_cinder_client()
+        attempts_left = retry_count + 1
+        while attempts_left > 0:
+            try:
+                volume = cc.volumes.create(size=size,
+                                           imageRef=image_ref)
+                record_resource('volume', volume.id)
+                return volume
+            except Exception as e:
+                if attempts_left == 0:
+                    raise
+                print(e)
+                attempts_left -= 1
+
+
+class Node(object):
+    def __init__(self, name, info, runner, keypair=None, userdata=None):
+        self.record_resource = lambda *args, **kwargs: None
+        self.name = name
+        self.info = info
+        self.runner = runner
+        self.keypair = keypair
+        self.userdata = userdata
+        self.server_id = None
+        self.fip_ids = set()
+        self.ports = []
+        self.server_status = None
+        self.image = None
+        self.flavor = None
+        self.attempts_left = runner.retry_count + 1
+
+        if self.info.get('image') in self.runner.mappings.get('images', {}):
+            self.info['image'] = self.runner.mappings['images'][self.info['image']]
+
+        if self.info.get('flavor') in self.runner.mappings.get('flavors', {}):
+            self.info['flavor'] = self.runner.mappings['flavors'][self.info['flavor']]
+
+    def poll(self, desired_status='ACTIVE'):
+        """
+        This one poll nova and return the server status
+        """
+        if self.server_status != desired_status:
+            self.server_status = self.runner.cloud_driver.get_nova_client().servers.get(self.server_id).status
+        return self.server_status
+
+    def clean(self):
+        """
+        Cleaner: This method remove server, fip, port etc.
+        We could keep fip and may be ports (ports are getting deleted with current
+        neutron client), but that is going to be bit more complex to make sure
+        right port is assigned to right fip etc, so atm, just removing them.
+        """
+        for fip_id in self.fip_ids:
+            self.runner.delete_floatingip(fip_id)
+        self.fip_ids = set()
+
+        for port in self.ports:
+            self.runner.delete_port(port['id'])
+        self.ports = []
+
+        self.runner.delete_server(self.server_id)
+        self.server_id = None
+
+    def create_nics(self, networks):
+        nics = []
+        for eth_idx, network in enumerate(networks):
+            port_name = '%s_eth%d' % (self.name, eth_idx)
+            port_info = self.runner.create_port(port_name, network['network'],
+                                                [self.runner.secgroups[secgroup] for secgroup in network.get('securitygroups', [])])
+            self.runner.record_resource('port', port_info['id'])
+            self.ports.append(port_info)
+
+            if network.get('assign_floating_ip', False):
+                fip_id, fip_address = self.runner.create_floating_ip()
+                self.runner.associate_floating_ip(port_info['id'], fip_id)
+                port_info['floating_ip'] = fip_address
+                self.fip_ids.add(fip_id)
+
+            nics.append(port_info['id'])
+        return nics
+
+    def build(self):
+        if self.flavor is None:
+            self.flavor = self.runner.cloud_driver.get_nova_client().flavors.get(self.info['flavor'])
+
+        nics = [{'port-id': port_id} for port_id in self.create_nics(self.info['networks'])]
+
+        volume = self.runner.create_volume(size=self.info['disk'],
+                                           image_ref=self.info['image'])
+
+        while volume.status != 'available':
+            time.sleep(3)
+            volume = self.runner.cloud_driver.get_cinder_client().volumes.get(volume.id)
+
+        bdm = {'vda': '%s:::1' % (volume.id,)}
+
+        server = self.runner.cloud_driver.get_nova_client().servers.create(self.name, image=None,
+                                                                           block_device_mapping=bdm,
+                                                                           flavor=self.flavor, nics=nics,
+                                                                           key_name=self.keypair, userdata=self.userdata)
+        self.runner.record_resource('server', server.id)
+        self.server_id = server.id
+        self.attempts_left -= 1
+
+    @property
+    def floating_ip(self):
+        for port in self.ports:
+            if 'floating_ip' in port:
+                return port['floating_ip']
+
+
+class DeploymentRunner(object):
+    def __init__(self, config=None, suffix=None, mappings=None, key=None,
+                 record_resource=None, retry_count=0, cloud_driver=None):
+        self.cfg = config
+        self.suffix = suffix
+        self.mappings = mappings or {}
+        self.key = key
+        self.retry_count = retry_count
+        self.cloud_driver = cloud_driver
+        self.record_resource = lambda *args, **kwargs: None
+
+        self.conncache = {}
+        self.networks = {}
+        self.secgroups = {}
+        self.nodes = {}
+
+    def _map_network(self, network):
+        if network in self.mappings.get('networks', {}):
+            return self.mappings['networks'][network]
+        elif network in self.networks:
+            return self.networks[network]
+        return network
+
+    def detect_existing_resources(self):
+        suffix = self.add_suffix('')
+        if suffix:
+            def strip_suffix(s):
+                return s[:-len(suffix)]
+        else:
+            def strip_suffix(s):
+                return s
+
+        network_name_by_id = {}
+
+        for network in self.cloud_driver.get_networks():
+            if network['name'].endswith(suffix):
+                base_name = strip_suffix(network['name'])
+                if base_name in self.networks:
+                    raise exceptions.DuplicateResourceException('Network', network['name'])
+
+                self.networks[base_name] = network['id']
+                network_name_by_id[network['id']] = base_name
+
+        raw_ports = [{'id': port['id'],
+                      'fixed_ip': port['fixed_ips'][0]['ip_address'],
+                      'mac': port['mac_address'],
+                      'network_name': network_name_by_id.get(port['network_id'], port['network_id'])}
+                     for port in self.cloud_driver.get_ports()]
+        ports_by_id = {port['id']: port for port in raw_ports}
+        ports_by_mac = {port['mac']: port for port in raw_ports}
+
+        for fip in self.cloud_driver.get_floating_ips():
+            port_id = fip['port_id']
+            if not port_id:
+                continue
+            port = ports_by_id[port_id]
+            port['floating_ip'] = fip['floating_ip_address']
+
+        for secgroup in self.cloud_driver.get_security_groups():
+            if secgroup['name'].endswith(suffix):
+                base_name = strip_suffix(secgroup['name'])
+                if base_name in self.secgroups:
+                    raise exceptions.DuplicateResourceException('Security Group', secgroup['name'])
+
+                self.secgroups[base_name] = secgroup['id']
+
+        for node in self.cloud_driver.get_servers():
+            if node.name.endswith(suffix):
+                base_name = strip_suffix(node.name)
+                if base_name in self.nodes:
+                    raise exceptions.DuplicateResourceException('Node', node.name)
+
+                self.nodes[base_name] = Node(node.name, {}, self)
+                for address in node.addresses.values():
+                    mac = address[0]['OS-EXT-IPS-MAC:mac_addr']
+                    port = ports_by_mac[mac]
+                    self.nodes[base_name].ports.append(port)
+
+    def delete_volume(self, uuid):
+        cc = self.get_cinder_client()
+        cc.volumes.delete(uuid)
+
+    def delete_port(self, uuid):
+        self.cloud_driver.delete_port(uuid)
+
+    def delete_network(self, uuid):
+        self.cloud_driver.delete_network(uuid)
+
+    def delete_router(self, uuid):
+        self.cloud_driver.delete_router(uuid)
+
+    def delete_subnet(self, uuid):
+        self.cloud_driver.delete_subnet(uuid)
+
+    def delete_secgroup(self, uuid):
+        self.cloud_driver.delete_secgroup(uuid)
+
+    def delete_secgroup_rule(self, uuid):
+        self.cloud_driver.delete_secgroup_rule(uuid)
+
+    def delete_floatingip(self, uuid):
+        self.cloud_driver.delete_floatingip(uuid)
+
+    def delete_keypair(self, name):
+        self.cloud_driver.delete_keypair(name)
+
+    def delete_server(self, uuid):
+        self.cloud_driver.delete_server(uuid)
+
+    def create_volume(self, size, image_ref):
+        return self.cloud_driver.create_volume(size, image_ref, self.retry_count, self.record_resource)
+
+    def create_port(self, name, network, secgroups):
+        network_id = self._map_network(network)
+        return self.cloud_driver.create_port(name, network, network_id, secgroups)
+
+    def create_keypair(self, name, keydata):
+        self.cloud_driver.create_keypair(name, keydata, self.retry_count)
 
     def create_floating_ip(self):
-        nc = self.get_neutron_client()
-        floating_network = self.find_floating_network()
-        floatingip = {'floating_network_id': floating_network}
-        floatingip = nc.create_floatingip({'floatingip': floatingip})
-        self.record_resource('floatingip', floatingip['floatingip']['id'])
-        return (floatingip['floatingip']['id'],
-                floatingip['floatingip']['floating_ip_address'])
+        return self.cloud_driver.create_floating_ip(record_resource=self.record_resource)
 
     def associate_floating_ip(self, port_id, fip_id):
-        nc = self.get_neutron_client()
-        nc.update_floatingip(fip_id, {'floatingip': {'port_id': port_id}})
+        self.cloud_driver.associate_floating_ip(port_id, fip_id)
 
     def create_network(self, name, info):
-        nc = self.get_neutron_client()
-        network = {'name': name, 'admin_state_up': True}
-        network = nc.create_network({'network': network})
-        self.record_resource('network', network['network']['id'])
-
-        subnet = {"network_id": network['network']['id'],
-                  "ip_version": 4,
-                  "cidr": info['cidr'],
-                  "name": name}
-        subnet = nc.create_subnet({'subnet': subnet})['subnet']
-        self.record_resource('subnet', subnet['id'])
-
-        if '*' in self.mappings.get('routers', {}):
-            nc.add_interface_router(self.mappings['routers']['*'], {'subnet_id': subnet['id']})
-
-        return network['network']['id']
+        return self.cloud_driver.create_network(name, info, self.mappings, self.record_resource)
 
     def create_security_group(self, base_name, info):
-        nc = self.get_neutron_client()
         name = self.add_suffix(base_name)
-
-        secgroup = {'name': name}
-        secgroup = nc.create_security_group({'security_group': secgroup})['security_group']
-
-        self.record_resource('secgroup', secgroup['id'])
-        self.secgroups[base_name] = secgroup['id']
-
-        for rule in (info or []):
-            secgroup_rule = {"direction": "ingress",
-                             "ethertype": "IPv4",
-                             "port_range_min": rule['from_port'],
-                             "port_range_max": rule['to_port'],
-                             "protocol": rule['protocol'],
-                             "security_group_id": secgroup['id']}
-
-            if 'source_group' in rule:
-                secgroup_rule['remote_group_id'] = self.secgroups.get(rule['source_group'], rule['source_group'])
-            else:
-                secgroup_rule['remote_ip_prefix'] = rule['cidr']
-
-            secgroup_rule = nc.create_security_group_rule({'security_group_rule': secgroup_rule})
-            self.record_resource('secgroup_rule', secgroup_rule['security_group_rule']['id'])
+        self.cloud_driver.create_security_group(base_name, name, info, self.record_resource, self.secgroups)
 
     def build_env_prefix(self, details):
         env_prefix = ''
@@ -724,7 +783,8 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
                               suffix=args.suffix,
                               mappings=load_mappings(args.mappings),
                               key=key,
-                              retry_count=args.retry_count)
+                              retry_count=args.retry_count,
+                              cloud_driver=CloudDriver())
 
         if args.cont:
             dr.detect_existing_resources()
@@ -740,7 +800,7 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
             dr.deploy(args.name)
 
     def cleanup(args):
-        dr = DeploymentRunner()
+        dr = DeploymentRunner(cloud_driver=CloudDriver())
 
         with open(args.log, 'r') as fp:
             lines = [l.strip() for l in fp]
