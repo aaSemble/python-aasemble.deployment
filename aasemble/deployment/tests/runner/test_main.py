@@ -63,8 +63,8 @@ class NodeTests(unittest.TestCase):
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_cinder_client')
-    @mock.patch('aasemble.deployment.cloud.models.Node.create_nics')
-    @mock.patch('aasemble.deployment.cloud.models.time')
+    @mock.patch('aasemble.deployment.runner.CloudDriver._create_nics')
+    @mock.patch('aasemble.deployment.cloud.openstack.time')
     def test_build(self, time, create_nics, get_cinder_client, get_neutron_client, get_nova_client):
         self.node.image_name = 'someimage'
         self.node.flavor_name = 'someflavor'
@@ -90,7 +90,7 @@ class NodeTests(unittest.TestCase):
 
         self.node.build()
 
-        create_nics.assert_called_with(mock.sentinel.Networks)
+        create_nics.assert_called_with(self.node, mock.sentinel.Networks)
         novaclient.flavors.get.assert_called_with('someflavor')
 
         novaclient.servers.create.assert_called_with('name', userdata=None,
@@ -103,9 +103,9 @@ class NodeTests(unittest.TestCase):
         self.node.ports = [{'floating_ip': '1.2.3.4'}]
         self.assertEquals(self.node.floating_ip, '1.2.3.4')
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.delete_server')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.delete_port')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.delete_floatingip')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.delete_server')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.delete_port')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.delete_floatingip')
     def test_clean(self, delete_floatingip, delete_port, delete_server):
         self.node.fip_ids = set(['fipuuid1', 'fipuuid2'])
         self.node.ports = [{'id': 'portuuid1'}, {'id': 'portuuid2'}]
@@ -123,30 +123,6 @@ class NodeTests(unittest.TestCase):
 
         delete_server.assert_any_call('serveruuid')
         self.assertEquals(self.node.server_id, None)
-
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.create_port')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.create_floating_ip')
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.associate_floating_ip')
-    def test_create_nics(self, associate_floating_ip, create_floating_ip, create_port):
-        self.dr.secgroups['secgroup1'] = 'secgroupuuid1'
-        self.dr.secgroups['secgroup2'] = 'secgroupuuid2'
-        networks = [{'network': 'network1',
-                     'securitygroups': ['secgroup1']},
-                    {'network': 'network2',
-                     'securitygroups': ['secgroup1', 'secgroup2'],
-                     'assign_floating_ip': True}]
-
-        create_port.side_effect = [{'id': 'port1uuid'},
-                                   {'id': 'port2uuid'}]
-        create_floating_ip.side_effect = [('fip1uuid', '1.2.3.4')]
-
-        nics = self.node.create_nics(networks)
-
-        create_port.assert_any_call('name_eth0', 'network1', ['secgroupuuid1'])
-        create_port.assert_any_call('name_eth1', 'network2', ['secgroupuuid1', 'secgroupuuid2'])
-
-        self.assertEquals(nics, ['port1uuid', 'port2uuid'])
-
 
 class MainTests(unittest.TestCase):
     def setUp(self):
@@ -505,36 +481,6 @@ class MainTests(unittest.TestCase):
             self.assertIn(node, self.dr.nodes)
 
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
-    def test_create_port(self, get_neutron_client):
-        nc = get_neutron_client.return_value
-        nc.create_port.return_value = {'port': {
-                                       'status': 'DOWN',
-                                       'name': '1298eefe-7654-49e0-8d38-47a6e4f75bd4',
-                                       'admin_state_up': True,
-                                       'network_id': '1fcda898-ae86-462e-a2d0-2cc2384b5898',
-                                       'tenant_id': 'c5f19d06a4194f138c873e97950d1f3c',
-                                       "device_owner": "",
-                                       "mac_address": "02:12:98:ee:fe:76",
-                                       "fixed_ips": [{"subnet_id": "3bc91c43-06a0-4a99-8e99-83703818d908",
-                                                      "ip_address": "10.0.0.4"}],
-                                       "id": "1298eefe-7654-49e0-8d38-47a6e4f75bd4",
-                                       "security_groups": ["7acbf890-e3c0-41a5-880d-ebeb6b1ded5e"],
-                                       "device_id": ""}}
-
-        port = self.dr.create_port('port_name', 'network_id',
-                                   ["7acbf890-e3c0-41a5-880d-ebeb6b1ded5e"])
-
-        nc.create_port.assert_called_once_with({'port': {'name': 'port_name',
-                                                         'admin_state_up': True,
-                                                         'security_groups': ["7acbf890-e3c0-41a5-880d-ebeb6b1ded5e"],
-                                                         'network_id': 'network_id'}})
-
-        self.assertEquals(port, {'id': "1298eefe-7654-49e0-8d38-47a6e4f75bd4",
-                                 'network_name': 'network_id',
-                                 'mac': '02:12:98:ee:fe:76',
-                                 'fixed_ip': '10.0.0.4'})
-
-    @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
     def test_create_network(self, get_neutron_client):
         nc = get_neutron_client.return_value
         nc.create_network.return_value = {'network': {'id': 'theuuid'}}
@@ -594,11 +540,11 @@ class MainTests(unittest.TestCase):
         self.dr.create_security_group('secgroupname', None)
         nc.create_security_group.assert_called_once_with({'security_group': {'name': 'secgroupname'}})
 
-    @mock.patch('aasemble.deployment.runner.DeploymentRunner.create_port')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.create_port')
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_cinder_client')
-    @mock.patch('aasemble.deployment.cloud.models.time')
+    @mock.patch('aasemble.deployment.cloud.openstack.time')
     def test_create_node(self, time, get_cinder_client, get_neutron_client, get_nova_client, create_port):
         nc = get_nova_client.return_value
 
@@ -871,3 +817,59 @@ class CloudDriverTests(unittest.TestCase):
         self.assertEquals(self.cloud_driver.create_floating_ip(), ('theuuid', '1.2.3.4'))
 
         nc.create_floatingip.assert_called_once_with({'floatingip': {'floating_network_id': 'netuuid'}})
+
+    @mock.patch('aasemble.deployment.runner.CloudDriver.create_port')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.create_floating_ip')
+    @mock.patch('aasemble.deployment.runner.CloudDriver.associate_floating_ip')
+    def test_create_nics(self, associate_floating_ip, create_floating_ip, create_port):
+        self.cloud_driver.secgroups['secgroup1'] = 'secgroupuuid1'
+        self.cloud_driver.secgroups['secgroup2'] = 'secgroupuuid2'
+        networks = [{'network': 'network1',
+                     'securitygroups': ['secgroup1']},
+                    {'network': 'network2',
+                     'securitygroups': ['secgroup1', 'secgroup2'],
+                     'assign_floating_ip': True}]
+
+        create_port.side_effect = [{'id': 'port1uuid'},
+                                   {'id': 'port2uuid'}]
+        create_floating_ip.side_effect = [('fip1uuid', '1.2.3.4')]
+
+        server = aasemble.deployment.cloud.models.Node('name', None, None, [], None, False, None)
+        nics = self.cloud_driver._create_nics(server, networks)
+
+        create_port.assert_any_call('name_eth0', 'network1', ['secgroupuuid1'])
+        create_port.assert_any_call('name_eth1', 'network2', ['secgroupuuid1', 'secgroupuuid2'])
+
+        self.assertEquals(nics, ['port1uuid', 'port2uuid'])
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver.get_neutron_client')
+    def test_create_port(self, get_neutron_client):
+        nc = get_neutron_client.return_value
+        nc.create_port.return_value = {'port': {
+                                       'status': 'DOWN',
+                                       'name': '1298eefe-7654-49e0-8d38-47a6e4f75bd4',
+                                       'admin_state_up': True,
+                                       'network_id': '1fcda898-ae86-462e-a2d0-2cc2384b5898',
+                                       'tenant_id': 'c5f19d06a4194f138c873e97950d1f3c',
+                                       "device_owner": "",
+                                       "mac_address": "02:12:98:ee:fe:76",
+                                       "fixed_ips": [{"subnet_id": "3bc91c43-06a0-4a99-8e99-83703818d908",
+                                                      "ip_address": "10.0.0.4"}],
+                                       "id": "1298eefe-7654-49e0-8d38-47a6e4f75bd4",
+                                       "security_groups": ["7acbf890-e3c0-41a5-880d-ebeb6b1ded5e"],
+                                       "device_id": ""}}
+
+        port = self.cloud_driver.create_port('port_name', 'network_id', 'network_id',
+                                             ["7acbf890-e3c0-41a5-880d-ebeb6b1ded5e"])
+
+        nc.create_port.assert_called_once_with({'port': {'name': 'port_name',
+                                                         'admin_state_up': True,
+                                                         'security_groups': ["7acbf890-e3c0-41a5-880d-ebeb6b1ded5e"],
+                                                         'network_id': 'network_id'}})
+
+        self.assertEquals(port, {'id': "1298eefe-7654-49e0-8d38-47a6e4f75bd4",
+                                 'network_name': 'network_id',
+                                 'mac': '02:12:98:ee:fe:76',
+                                 'fixed_ip': '10.0.0.4'})
+
+

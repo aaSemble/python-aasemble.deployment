@@ -1,4 +1,5 @@
 import os
+import time
 
 from neutronclient.common.exceptions import Conflict as NeutronConflict
 
@@ -244,3 +245,70 @@ class OpenStackDriver(CloudDriver):
                                                        userdata=userdata)
         self.record_resource('server', server.id)
         return server
+
+    def poll_server(self, server, desired_status='ACTIVE'):
+        """
+        This one poll nova and return the server status
+        """
+        if server.server_status != desired_status:
+            server.server_status = self.get_nova_client().servers.get(server.server_id).status
+        return server.server_status
+
+    def clean_server(self, server):
+        """
+        Cleaner: This method remove server, fip, port etc.
+        We could keep fip and may be ports (ports are getting deleted with current
+        neutron client), but that is going to be bit more complex to make sure
+        right port is assigned to right fip etc, so atm, just removing them.
+        """
+        for fip_id in server.fip_ids:
+            self.delete_floatingip(fip_id)
+        server.fip_ids = set()
+
+        for port in server.ports:
+            self.delete_port(port['id'])
+        server.ports = []
+
+        self.delete_server(server.server_id)
+        server.server_id = None
+
+    def _create_nics(self, server, networks):
+        nics = []
+        for eth_idx, network in enumerate(networks):
+            port_name = '%s_eth%d' % (server.name, eth_idx)
+            port_info = self.create_port(port_name, network['network'],
+                                         [self.secgroups[secgroup] for secgroup in network.get('securitygroups', [])])
+            server.ports.append(port_info)
+
+            if network.get('assign_floating_ip', False):
+                fip_id, fip_address = self.create_floating_ip()
+                self.associate_floating_ip(port_info['id'], fip_id)
+                port_info['floating_ip'] = fip_address
+                server.fip_ids.add(fip_id)
+
+            nics.append(port_info['id'])
+        return nics
+
+    def build_server(self, server):
+        if server.flavor is None:
+            server.flavor = self.get_flavor(server.mapped_flavor_name)
+
+        nics = [{'port-id': port_id} for port_id in self._create_nics(server, server.networks)]
+
+        volume = self.create_volume(size=server.disk,
+                                    image_ref=server.image, retry_count=3)
+
+        while volume.status != 'available':
+            time.sleep(3)
+            volume = self.get_volume(volume.id)
+
+        bdm = {'vda': '%s:::1' % (volume.id,)}
+
+        server_info = self.create_server(name=server.name, image=None,
+                                         block_device_mapping=bdm,
+                                         flavor=server.flavor, nics=nics,
+                                         key_name=server.keypair, userdata=server.userdata)
+        server.server_id = server_info.id
+        server.attempts_left -= 1
+
+

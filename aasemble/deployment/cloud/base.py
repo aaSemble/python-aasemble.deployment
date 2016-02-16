@@ -1,6 +1,7 @@
 class CloudDriver(object):
     def __init__(self, record_resource):
         self.record_resource = record_resource
+        self.secgroups = {}
 
     def create_floating_ip(name):
         raise NotImplementedError()

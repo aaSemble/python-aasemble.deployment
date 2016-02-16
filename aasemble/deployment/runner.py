@@ -266,10 +266,6 @@ class DeploymentRunner(object):
     def create_volume(self, size, image_ref):
         return self.cloud_driver.create_volume(size, image_ref, self.retry_count)
 
-    def create_port(self, name, network, secgroups):
-        network_id = self._map_network(network)
-        return self.cloud_driver.create_port(name, network, network_id, secgroups)
-
     def create_keypair(self, name, keydata):
         self.cloud_driver.create_keypair(name, keydata, self.retry_count)
 
