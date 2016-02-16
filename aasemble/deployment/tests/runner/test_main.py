@@ -781,22 +781,13 @@ class MainTests(unittest.TestCase):
         nc_delete_method.assert_called_with('someuuid')
 
 
-class CloudDriverTests(unittest.TestCase):
+class OpenStackDriverTests(unittest.TestCase):
     def setUp(self):
         self.record_resource = mock.MagicMock()
-        self.cloud_driver = aasemble.deployment.runner.CloudDriver(record_resource=self.record_resource)
+        self.cloud_driver = aasemble.deployment.cloud.openstack.OpenStackDriver(record_resource=self.record_resource)
 
-    @mock.patch('aasemble.deployment.runner.CloudDriver._get_neutron_client')
-    def test_find_floating_network(self, _get_neutron_client):
-        nc = _get_neutron_client.return_value
-        nc.list_networks.return_value = {'networks': [{'id': 'netuuid'}]}
-
-        self.assertEquals(self.cloud_driver._find_floating_network(), 'netuuid')
-
-        nc.list_networks.assert_called_once_with(**{'router:external': True})
-
-    @mock.patch('aasemble.deployment.runner.CloudDriver._get_neutron_client')
-    @mock.patch('aasemble.deployment.runner.CloudDriver._find_floating_network')
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_neutron_client')
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._find_floating_network')
     def test_create_floating_ip(self, find_floating_network, _get_neutron_client):
         nc = _get_neutron_client.return_value
 
@@ -810,9 +801,29 @@ class CloudDriverTests(unittest.TestCase):
 
         nc.create_floatingip.assert_called_once_with({'floatingip': {'floating_network_id': 'netuuid'}})
 
-    @mock.patch('aasemble.deployment.runner.CloudDriver.create_port')
-    @mock.patch('aasemble.deployment.runner.CloudDriver.create_floating_ip')
-    @mock.patch('aasemble.deployment.runner.CloudDriver.associate_floating_ip')
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_nova_client')
+    def test_create_keypair(self, _get_nova_client):
+        nc = _get_nova_client.return_value
+
+        key_name = 'keyname'
+        key_data = 'ssh-rsa AAAAaaaaaasdfasdfasdfasdfasdfasdfasdfasdf test@foobar'
+
+        self.cloud_driver.create_keypair(key_name, key_data, 3)
+
+        nc.keypairs.create.assert_called_with(key_name, key_data)
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_neutron_client')
+    def test_find_floating_network(self, _get_neutron_client):
+        nc = _get_neutron_client.return_value
+        nc.list_networks.return_value = {'networks': [{'id': 'netuuid'}]}
+
+        self.assertEquals(self.cloud_driver._find_floating_network(), 'netuuid')
+
+        nc.list_networks.assert_called_once_with(**{'router:external': True})
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver.create_port')
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver.create_floating_ip')
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver.associate_floating_ip')
     def test_create_nics(self, associate_floating_ip, create_floating_ip, create_port):
         self.cloud_driver.secgroups['secgroup1'] = 'secgroupuuid1'
         self.cloud_driver.secgroups['secgroup2'] = 'secgroupuuid2'
@@ -863,5 +874,3 @@ class CloudDriverTests(unittest.TestCase):
                                  'network_name': 'network_id',
                                  'mac': '02:12:98:ee:fe:76',
                                  'fixed_ip': '10.0.0.4'})
-
-
