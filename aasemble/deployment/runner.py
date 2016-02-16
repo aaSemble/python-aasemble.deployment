@@ -234,6 +234,23 @@ class Node(object):
                 return port['floating_ip']
 
 
+class FakeResourceRecorder(object):
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def record(self, *args, **kwargs):
+        pass
+
+
+class FileResourceRecorder(object):
+    def __init__(self, filename):
+        self.filename = filename
+
+    def record(self, object_type, id):
+        with open(self.filename, 'a+') as fp:
+            fp.write('%s: %s\n' % (object_type, id))
+
+
 class DeploymentRunner(object):
     def __init__(self, config=None, suffix=None, mappings=None, key=None,
                  record_resource=None, retry_count=0, cloud_driver=None):
@@ -546,7 +563,14 @@ class DeploymentRunner(object):
             func(details)
 
 
+
 def main(argv=sys.argv[1:], stdout=sys.stdout):
+    def get_resource_recorder_class(args):
+        if args.cleanup:
+            return FileResourceRecorder
+        else:
+            return FakeResourceRecorder
+
     def deploy(args):
         cfg = load_yaml(args.cfg)
 
@@ -554,20 +578,22 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
             with open(args.key, 'r') as fp:
                 key = fp.read()
 
+        resource_recorder_class = get_resource_recorder_class(args)
 
-        def create_runnner_and_perform_deployment(record_resource):
-            dr = DeploymentRunner(config=cfg,
-                                  suffix=args.suffix,
-                                  mappings=load_mappings(args.mappings),
-                                  key=key,
-                                  retry_count=args.retry_count,
-                                  record_resource=record_resource,
-                                  cloud_driver=CloudDriver(record_resource))
+        record_resource = resource_recorder_class(args.cleanup).record
 
-            if args.cont:
-                dr.detect_existing_resources()
+        dr = DeploymentRunner(config=cfg,
+                              suffix=args.suffix,
+                              mappings=load_mappings(args.mappings),
+                              key=key,
+                              retry_count=args.retry_count,
+                              record_resource=record_resource,
+                              cloud_driver=CloudDriver(record_resource))
 
-            dr.deploy(args.name)
+        if args.cont:
+            dr.detect_existing_resources()
+
+        dr.deploy(args.name)
 
         if args.cleanup:
             with open(args.cleanup, 'a+') as cleanup:
