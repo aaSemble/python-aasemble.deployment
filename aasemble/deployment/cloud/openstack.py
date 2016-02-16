@@ -228,3 +228,19 @@ class OpenStackDriver(CloudDriver):
                     raise
                 print(e)
                 attempts_left -= 1
+
+    def get_flavor(self, name):
+        return self.get_nova_client().flavors.get(name)
+
+    def get_volume(self, id):
+        return self.get_cinder_client().volumes.get(id)
+
+    def create_server(self, name, image, block_device_mapping,
+                      flavor, nics, key_name, userdata):
+
+        server = self.get_nova_client().servers.create(name, image=image,
+                                                       block_device_mapping=block_device_mapping,
+                                                       flavor=flavor, nics=nics, key_name=key_name,
+                                                       userdata=userdata)
+        self.record_resource('server', server.id)
+        return server

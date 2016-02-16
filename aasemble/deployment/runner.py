@@ -205,7 +205,7 @@ class Node(object):
 
     def build(self):
         if self.flavor is None:
-            self.flavor = self.runner.cloud_driver.get_nova_client().flavors.get(self.info['flavor'])
+            self.flavor = self.runner.cloud_driver.get_flavor(self.info['flavor'])
 
         nics = [{'port-id': port_id} for port_id in self.create_nics(self.info['networks'])]
 
@@ -214,15 +214,14 @@ class Node(object):
 
         while volume.status != 'available':
             time.sleep(3)
-            volume = self.runner.cloud_driver.get_cinder_client().volumes.get(volume.id)
+            volume = self.runner.cloud_driver.get_volume(volume.id)
 
         bdm = {'vda': '%s:::1' % (volume.id,)}
 
-        server = self.runner.cloud_driver.get_nova_client().servers.create(self.name, image=None,
-                                                                           block_device_mapping=bdm,
-                                                                           flavor=self.flavor, nics=nics,
-                                                                           key_name=self.keypair, userdata=self.userdata)
-        self.runner.cloud_driver.record_resource('server', server.id)
+        server = self.runner.cloud_driver.create_server(name=self.name, image=None,
+                                                        block_device_mapping=bdm,
+                                                        flavor=self.flavor, nics=nics,
+                                                        key_name=self.keypair, userdata=self.userdata)
         self.server_id = server.id
         self.attempts_left -= 1
 
