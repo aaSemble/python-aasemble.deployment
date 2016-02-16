@@ -44,8 +44,6 @@ class Node(object):
                 return port['floating_ip']
 
 
-
-
 class Network(object):
     pass
 

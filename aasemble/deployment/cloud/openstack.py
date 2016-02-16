@@ -310,5 +310,3 @@ class OpenStackDriver(CloudDriver):
                                          key_name=server.keypair, userdata=server.userdata)
         server.server_id = server_info.id
         server.attempts_left -= 1
-
-
