@@ -20,7 +20,7 @@ import mock
 from six import StringIO
 from six.moves import builtins
 
-import aasemble.deployment.cloud.models
+import aasemble.deployment.cloud.models as cloud_models
 import aasemble.deployment.runner
 
 mappings_data = '''[images]
@@ -42,7 +42,7 @@ class NodeTests(unittest.TestCase):
         self.record_resource = mock.MagicMock()
         cloud_driver = aasemble.deployment.runner.CloudDriver(record_resource=self.record_resource)
         self.dr = aasemble.deployment.runner.DeploymentRunner(cloud_driver=cloud_driver)
-        self.node = aasemble.deployment.cloud.models.Node('name', None, None, [], None, False, self.dr)
+        self.node = cloud_models.Node('name', None, None, [], None, False, self.dr)
 
     @mock.patch('aasemble.deployment.runner.CloudDriver._get_nova_client')
     def test_poll(self, _get_nova_client):
@@ -103,19 +103,21 @@ class NodeTests(unittest.TestCase):
         self.node.ports = [{'floating_ip': '1.2.3.4'}]
         self.assertEquals(self.node.floating_ip, '1.2.3.4')
 
-    @mock.patch('aasemble.deployment.runner.CloudDriver.delete_server')
+    @mock.patch('aasemble.deployment.runner.CloudDriver._delete_server')
     @mock.patch('aasemble.deployment.runner.CloudDriver.delete_port')
     @mock.patch('aasemble.deployment.runner.CloudDriver.delete_floatingip')
     def test_clean(self, delete_floatingip, delete_port, delete_server):
-        self.node.fip_ids = set(['fipuuid1', 'fipuuid2'])
+        fip1 = cloud_models.FloatingIP(id='fipuuid1', ip_address='1.1.1.1')
+        fip2 = cloud_models.FloatingIP(id='fipuuid2', ip_address='2.2.2.2')
+        self.node.fips = set([fip1, fip2])
         self.node.ports = [{'id': 'portuuid1'}, {'id': 'portuuid2'}]
         self.node.server_id = 'serveruuid'
 
         self.node.clean()
 
-        delete_floatingip.assert_any_call('fipuuid1')
-        delete_floatingip.assert_any_call('fipuuid2')
-        self.assertEquals(self.node.fip_ids, set())
+        delete_floatingip.assert_any_call(fip1)
+        delete_floatingip.assert_any_call(fip2)
+        self.assertEquals(self.node.fips, set())
 
         delete_port.assert_any_call('portuuid1')
         delete_port.assert_any_call('portuuid2')
@@ -563,16 +565,16 @@ class MainTests(unittest.TestCase):
         self.dr.mappings = {'images': {'trusty': 'trustyuuid'},
                             'flavors': {'small': 'smallid'}}
 
-        node = aasemble.deployment.cloud.models.Node('test1_x123',
-                                                     'small',
-                                                     'trusty',
-                                                     [{'network': 'ephemeral', 'assign_floating_ip': True},
-                                                                   {'network': 'passedthrough'}],
-                                                     10,
-                                                     False,
-                                                     userdata='foo',
-                                                     keypair='key_x123',
-                                                     runner=self.dr)
+        node = cloud_models.Node('test1_x123',
+                                 'small',
+                                 'trusty',
+                                 [{'network': 'ephemeral', 'assign_floating_ip': True},
+                                               {'network': 'passedthrough'}],
+                                 10,
+                                 False,
+                                 userdata='foo',
+                                 keypair='key_x123',
+                                 runner=self.dr)
 
         cinderclient = _get_cinder_client.return_value
 
@@ -623,7 +625,7 @@ class MainTests(unittest.TestCase):
 
     @mock.patch('aasemble.deployment.cloud.models.Node.build')
     def test__create_node(self, node_build):
-        self.dr.nodes['existing_node'] = aasemble.deployment.cloud.models.Node('existing_node', None, None, [], None, False, self.dr)
+        self.dr.nodes['existing_node'] = cloud_models.Node('existing_node', None, None, [], None, False, self.dr)
 
         self.assertEquals(self.dr._create_node('nodename', {}, 'keypair', ''),
                           'nodename')
@@ -743,23 +745,12 @@ class MainTests(unittest.TestCase):
                                      keypair_name=None)
 
     @mock.patch('aasemble.deployment.runner.CloudDriver._get_nova_client')
-    def test_delete_server(self, _get_nova_client):
-        nc = _get_nova_client.return_value
-
-        self.dr.delete_server('someuuid')
-
-        nc.servers.delete.assert_called_with('someuuid')
-
-    @mock.patch('aasemble.deployment.runner.CloudDriver._get_nova_client')
     def test_delete_keypair(self, _get_nova_client):
         nc = _get_nova_client.return_value
 
         self.dr.delete_keypair('somename')
 
         nc.keypairs.delete.assert_called_with('somename')
-
-    def test_delete_floatingip(self):
-        self._test_delete_neutron_resource('floatingip')
 
     def test_delete_network(self):
         self._test_delete_neutron_resource('network')
@@ -800,12 +791,12 @@ class CloudDriverTests(unittest.TestCase):
         nc = _get_neutron_client.return_value
         nc.list_networks.return_value = {'networks': [{'id': 'netuuid'}]}
 
-        self.assertEquals(self.cloud_driver.find_floating_network(), 'netuuid')
+        self.assertEquals(self.cloud_driver._find_floating_network(), 'netuuid')
 
         nc.list_networks.assert_called_once_with(**{'router:external': True})
 
     @mock.patch('aasemble.deployment.runner.CloudDriver._get_neutron_client')
-    @mock.patch('aasemble.deployment.runner.CloudDriver.find_floating_network')
+    @mock.patch('aasemble.deployment.runner.CloudDriver._find_floating_network')
     def test_create_floating_ip(self, find_floating_network, _get_neutron_client):
         nc = _get_neutron_client.return_value
 
@@ -814,7 +805,8 @@ class CloudDriverTests(unittest.TestCase):
         nc.create_floatingip.return_value = {'floatingip': {'id': 'theuuid',
                                                             'floating_ip_address': '1.2.3.4'}}
 
-        self.assertEquals(self.cloud_driver.create_floating_ip(), ('theuuid', '1.2.3.4'))
+        self.assertEquals(self.cloud_driver.create_floating_ip(),
+                          cloud_models.FloatingIP('theuuid', '1.2.3.4'))
 
         nc.create_floatingip.assert_called_once_with({'floatingip': {'floating_network_id': 'netuuid'}})
 
@@ -832,9 +824,9 @@ class CloudDriverTests(unittest.TestCase):
 
         create_port.side_effect = [{'id': 'port1uuid'},
                                    {'id': 'port2uuid'}]
-        create_floating_ip.side_effect = [('fip1uuid', '1.2.3.4')]
+        create_floating_ip.side_effect = [cloud_models.FloatingIP(id='fip1uuid', ip_address='1.2.3.4')]
 
-        server = aasemble.deployment.cloud.models.Node('name', None, None, [], None, False, None)
+        server = cloud_models.Node('name', None, None, [], None, False, None)
         nics = self.cloud_driver._create_nics(server, networks)
 
         create_port.assert_any_call('name_eth0', 'network1', ['secgroupuuid1'])

@@ -14,7 +14,7 @@ class Node(object):
         self.attempts_left = attempts_left
 
         self.server_id = None
-        self.fip_ids = set()
+        self.fips = set()
         self.flavor = None
         self.image = None
         self.ports = []
@@ -49,8 +49,18 @@ class Network(object):
 
 
 class FloatingIP(object):
-    pass
+    def __init__(self, id, ip_address):
+        self.id = id
+        self.ip_address = ip_address
 
+    def __repr__(self):
+        return "<FloatingIP id='%s' ip_address='%s'>" % (self.id, self.ip_address)
+
+    def __eq__(self, other):
+        return (self.id == other.id) and (self.ip_address == other.ip_address)
+
+    def __hash__(self):
+        return hash(self.id) ^ hash(self.ip_address)
 
 class SecurityGroup(object):
     pass

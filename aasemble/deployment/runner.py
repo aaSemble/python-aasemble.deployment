@@ -170,13 +170,6 @@ class DeploymentRunner(object):
         self.secgroups = {}
         self.nodes = {}
 
-    def _map_network(self, network):
-        if network in self.mappings.get('networks', {}):
-            return self.mappings['networks'][network]
-        elif network in self.networks:
-            return self.networks[network]
-        return network
-
     def detect_existing_resources(self):
         suffix = self.add_suffix('')
         if suffix:
@@ -258,9 +251,6 @@ class DeploymentRunner(object):
 
     def delete_keypair(self, name):
         self.cloud_driver.delete_keypair(name)
-
-    def delete_server(self, uuid):
-        self.cloud_driver.delete_server(uuid)
 
     def create_volume(self, size, image_ref):
         return self.cloud_driver.create_volume(size, image_ref, self.retry_count)

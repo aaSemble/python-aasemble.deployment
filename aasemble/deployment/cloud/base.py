@@ -65,3 +65,12 @@ class CloudDriver(object):
 
     def associate_floating_ip(self, port_id, fip_id):
         raise NotImplementedError()
+
+    def build_server(self, server):
+        raise NotImplementedError()
+
+    def poll_server(self, server):
+        raise NotImplementedError()
+
+    def clean_server(self, server):
+        raise NotImplementedError()
