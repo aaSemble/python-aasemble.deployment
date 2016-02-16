@@ -131,12 +131,12 @@ class OpenStackDriver(CloudDriver):
         networks = nc.list_networks(**{'router:external': True})
         return networks['networks'][0]['id']
 
-    def create_floating_ip(self, record_resource):
+    def create_floating_ip(self):
         nc = self.get_neutron_client()
         floating_network = self.find_floating_network()
         floatingip = {'floating_network_id': floating_network}
         floatingip = nc.create_floatingip({'floatingip': floatingip})
-        record_resource('floatingip', floatingip['floatingip']['id'])
+        self.record_resource('floatingip', floatingip['floatingip']['id'])
         return (floatingip['floatingip']['id'],
                 floatingip['floatingip']['floating_ip_address'])
 
@@ -144,31 +144,31 @@ class OpenStackDriver(CloudDriver):
         nc = self.get_neutron_client()
         nc.update_floatingip(fip_id, {'floatingip': {'port_id': port_id}})
 
-    def create_network(self, name, info, mappings, record_resource):
+    def create_network(self, name, info, mappings):
         nc = self.get_neutron_client()
         network = {'name': name, 'admin_state_up': True}
         network = nc.create_network({'network': network})
-        record_resource('network', network['network']['id'])
+        self.record_resource('network', network['network']['id'])
 
         subnet = {"network_id": network['network']['id'],
                   "ip_version": 4,
                   "cidr": info['cidr'],
                   "name": name}
         subnet = nc.create_subnet({'subnet': subnet})['subnet']
-        record_resource('subnet', subnet['id'])
+        self.record_resource('subnet', subnet['id'])
 
         if '*' in mappings.get('routers', {}):
             nc.add_interface_router(mappings['routers']['*'], {'subnet_id': subnet['id']})
 
         return network['network']['id']
 
-    def create_security_group(self, base_name, name, info, record_resource, secgroups):
+    def create_security_group(self, base_name, name, info, secgroups):
         nc = self.get_neutron_client()
 
         secgroup = {'name': name}
         secgroup = nc.create_security_group({'security_group': secgroup})['security_group']
 
-        record_resource('secgroup', secgroup['id'])
+        self.record_resource('secgroup', secgroup['id'])
         secgroups[base_name] = secgroup['id']
 
         for rule in (info or []):
@@ -185,7 +185,7 @@ class OpenStackDriver(CloudDriver):
                 secgroup_rule['remote_ip_prefix'] = rule['cidr']
 
             secgroup_rule = nc.create_security_group_rule({'security_group_rule': secgroup_rule})
-            record_resource('secgroup_rule', secgroup_rule['security_group_rule']['id'])
+            self.record_resource('secgroup_rule', secgroup_rule['security_group_rule']['id'])
 
     def get_servers(self):
         return self.get_nova_client().servers.list()
@@ -213,14 +213,14 @@ class OpenStackDriver(CloudDriver):
                 print(e)
                 attempts_left -= 1
 
-    def create_volume(self, size, image_ref, retry_count, record_resource):
+    def create_volume(self, size, image_ref, retry_count):
         cc = self.get_cinder_client()
         attempts_left = retry_count + 1
         while attempts_left > 0:
             try:
                 volume = cc.volumes.create(size=size,
                                            imageRef=image_ref)
-                record_resource('volume', volume.id)
+                self.record_resource('volume', volume.id)
                 return volume
             except Exception as e:
                 if attempts_left == 0:

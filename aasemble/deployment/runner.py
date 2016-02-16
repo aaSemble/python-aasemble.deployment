@@ -243,7 +243,7 @@ class DeploymentRunner(object):
         self.key = key
         self.retry_count = retry_count
         self.cloud_driver = cloud_driver
-        self.record_resource = lambda *args, **kwargs: None
+        self.record_resource = record_resource or (lambda *args, **kwargs: None)
 
         self.conncache = {}
         self.networks = {}
@@ -344,7 +344,7 @@ class DeploymentRunner(object):
         self.cloud_driver.delete_server(uuid)
 
     def create_volume(self, size, image_ref):
-        return self.cloud_driver.create_volume(size, image_ref, self.retry_count, self.record_resource)
+        return self.cloud_driver.create_volume(size, image_ref, self.retry_count)
 
     def create_port(self, name, network, secgroups):
         network_id = self._map_network(network)
@@ -354,17 +354,17 @@ class DeploymentRunner(object):
         self.cloud_driver.create_keypair(name, keydata, self.retry_count)
 
     def create_floating_ip(self):
-        return self.cloud_driver.create_floating_ip(record_resource=self.record_resource)
+        return self.cloud_driver.create_floating_ip()
 
     def associate_floating_ip(self, port_id, fip_id):
         self.cloud_driver.associate_floating_ip(port_id, fip_id)
 
     def create_network(self, name, info):
-        return self.cloud_driver.create_network(name, info, self.mappings, self.record_resource)
+        return self.cloud_driver.create_network(name, info, self.mappings)
 
     def create_security_group(self, base_name, info):
         name = self.add_suffix(base_name)
-        self.cloud_driver.create_security_group(base_name, name, info, self.record_resource, self.secgroups)
+        self.cloud_driver.create_security_group(base_name, name, info, self.secgroups)
 
     def build_env_prefix(self, details):
         env_prefix = ''
@@ -554,25 +554,28 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
             with open(args.key, 'r') as fp:
                 key = fp.read()
 
-        dr = DeploymentRunner(config=cfg,
-                              suffix=args.suffix,
-                              mappings=load_mappings(args.mappings),
-                              key=key,
-                              retry_count=args.retry_count,
-                              cloud_driver=CloudDriver())
 
-        if args.cont:
-            dr.detect_existing_resources()
+        def create_runnner_and_perform_deployment(record_resource):
+            dr = DeploymentRunner(config=cfg,
+                                  suffix=args.suffix,
+                                  mappings=load_mappings(args.mappings),
+                                  key=key,
+                                  retry_count=args.retry_count,
+                                  record_resource=record_resource,
+                                  cloud_driver=CloudDriver(record_resource))
+
+            if args.cont:
+                dr.detect_existing_resources()
+
+            dr.deploy(args.name)
 
         if args.cleanup:
             with open(args.cleanup, 'a+') as cleanup:
                 def record_resource(type_, id):
                     cleanup.write('%s: %s\n' % (type_, id))
-                dr.record_resource = record_resource
-
-                dr.deploy(args.name)
+                create_runnner_and_perform_deployment(record_resource)
         else:
-            dr.deploy(args.name)
+            create_runnner_and_perform_deployment(None)
 
     def cleanup(args):
         dr = DeploymentRunner(cloud_driver=CloudDriver())

@@ -38,8 +38,10 @@ small = 34fb3740-d158-472c-8520-017278c75008
 
 class NodeTests(unittest.TestCase):
     def setUp(self):
-        cloud_driver = aasemble.deployment.runner.CloudDriver()
-        self.dr = aasemble.deployment.runner.DeploymentRunner(cloud_driver=cloud_driver)
+        self.record_resource = mock.MagicMock()
+        cloud_driver = aasemble.deployment.runner.CloudDriver(record_resource=self.record_resource)
+        self.dr = aasemble.deployment.runner.DeploymentRunner(record_resource=self.record_resource,
+                                                              cloud_driver=cloud_driver)
         self.node = aasemble.deployment.runner.Node('name', {}, self.dr)
 
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
@@ -148,8 +150,10 @@ class NodeTests(unittest.TestCase):
 
 class MainTests(unittest.TestCase):
     def setUp(self):
-        cloud_driver = aasemble.deployment.runner.CloudDriver()
-        self.dr = aasemble.deployment.runner.DeploymentRunner(cloud_driver=cloud_driver)
+        self.record_resource = mock.MagicMock()
+        cloud_driver = aasemble.deployment.runner.CloudDriver(record_resource=self.record_resource)
+        self.dr = aasemble.deployment.runner.DeploymentRunner(record_resource=self.record_resource,
+                                                              cloud_driver=cloud_driver)
 
     def test_load_yaml(self):
         mock_open = mock.mock_open()
@@ -537,7 +541,6 @@ class MainTests(unittest.TestCase):
         nc.create_network.return_value = {'network': {'id': 'theuuid'}}
         nc.create_subnet.return_value = {'subnet': {'id': 'thesubnetuuid'}}
 
-        self.dr.record_resource = mock.MagicMock()
         self.dr.create_network('netname', {'cidr': '10.0.0.0/12'})
 
         nc.create_network.assert_called_once_with({'network': {'name': 'netname',
@@ -546,8 +549,8 @@ class MainTests(unittest.TestCase):
                                                              'cidr': '10.0.0.0/12',
                                                              'ip_version': 4,
                                                              'network_id': 'theuuid'}})
-        self.dr.record_resource.assert_any_call('network', 'theuuid')
-        self.dr.record_resource.assert_any_call('subnet', 'thesubnetuuid')
+        self.record_resource.assert_any_call('network', 'theuuid')
+        self.record_resource.assert_any_call('subnet', 'thesubnetuuid')
 
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
     def test_create_security_group(self, get_neutron_client):
@@ -556,7 +559,6 @@ class MainTests(unittest.TestCase):
         nc.create_security_group_rule.side_effect = [{'security_group_rule': {'id': 'theruleuuid1'}},
                                                      {'security_group_rule': {'id': 'theruleuuid2'}}]
 
-        self.dr.record_resource = mock.MagicMock()
         self.dr.create_security_group('secgroupname', [{'source_group': 'secgroupname',
                                                         'protocol': 'tcp',
                                                         'from_port': 23,
@@ -581,9 +583,9 @@ class MainTests(unittest.TestCase):
                                                                                'port_range_max': 24,
                                                                                'protocol': 'tcp',
                                                                                'security_group_id': 'theuuid'}})
-        self.dr.record_resource.assert_any_call('secgroup', 'theuuid')
-        self.dr.record_resource.assert_any_call('secgroup_rule', 'theruleuuid1')
-        self.dr.record_resource.assert_any_call('secgroup_rule', 'theruleuuid2')
+        self.record_resource.assert_any_call('secgroup', 'theuuid')
+        self.record_resource.assert_any_call('secgroup_rule', 'theruleuuid1')
+        self.record_resource.assert_any_call('secgroup_rule', 'theruleuuid2')
 
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
     def test_create_security_group_without_rules(self, get_neutron_client):
@@ -600,7 +602,6 @@ class MainTests(unittest.TestCase):
     @mock.patch('aasemble.deployment.runner.time')
     def test_create_node(self, time, get_cinder_client, get_neutron_client, get_nova_client, create_port):
         nc = get_nova_client.return_value
-        self.dr.record_resource = mock.MagicMock()
 
         nc.flavors.get.return_value = 'smallflavorobject'
         nc.images.get.return_value = 'trustyimageobject'
@@ -653,9 +654,9 @@ class MainTests(unittest.TestCase):
                                              key_name='key_x123',
                                              flavor='smallflavorobject')
 
-        self.dr.record_resource.assert_any_call('port', 'nicuuid1')
-        self.dr.record_resource.assert_any_call('port', 'nicuuid2')
-        self.dr.record_resource.assert_any_call('server', 'serveruuid')
+        self.record_resource.assert_any_call('port', 'nicuuid1')
+        self.record_resource.assert_any_call('port', 'nicuuid2')
+        self.record_resource.assert_any_call('server', 'serveruuid')
 
     def test_list_refs_human(self):
         self._test_list_refs(False, 'Images:\n  trusty\n\nFlavors:\n  bootstrap\n')
@@ -847,7 +848,8 @@ class MainTests(unittest.TestCase):
 
 class CloudDriverTests(unittest.TestCase):
     def setUp(self):
-        self.cloud_driver = aasemble.deployment.runner.CloudDriver()
+        self.record_resource = mock.MagicMock()
+        self.cloud_driver = aasemble.deployment.runner.CloudDriver(record_resource=self.record_resource)
 
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
     def test_find_floating_network(self, get_neutron_client):
@@ -868,6 +870,6 @@ class CloudDriverTests(unittest.TestCase):
         nc.create_floatingip.return_value = {'floatingip': {'id': 'theuuid',
                                                             'floating_ip_address': '1.2.3.4'}}
 
-        self.assertEquals(self.cloud_driver.create_floating_ip(record_resource=mock.MagicMock()), ('theuuid', '1.2.3.4'))
+        self.assertEquals(self.cloud_driver.create_floating_ip(), ('theuuid', '1.2.3.4'))
 
         nc.create_floatingip.assert_called_once_with({'floatingip': {'floating_network_id': 'netuuid'}})
