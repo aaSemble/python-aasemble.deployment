@@ -226,7 +226,7 @@ class DeploymentRunner(object):
                 if base_name in self.nodes:
                     raise exceptions.DuplicateResourceException('Node', node.name)
 
-                self.nodes[base_name] = models.Node(node.name, None, None, [], None, self)
+                self.nodes[base_name] = models.Node(node.name, None, None, [], None, False, self)
                 for address in node.addresses.values():
                     mac = address[0]['OS-EXT-IPS-MAC:mac_addr']
                     port = ports_by_mac[mac]
@@ -297,7 +297,7 @@ class DeploymentRunner(object):
 
         for node_name in self.nodes:
             node = self.nodes[node_name]
-            if node.info.get('export', False):
+            if node.export:
                 for port in node.ports:
                     key = 'AASEMBLE_%s_%s_fixed' % (node_name, port['network_name'])
                     value = port['fixed_ip']
@@ -440,6 +440,7 @@ class DeploymentRunner(object):
                                             node_info.get('image'),
                                             node_info.get('networks', []),
                                             node_info.get('disk'),
+                                            node_info.get('export', False),
                                             runner=self,
                                             keypair=keypair_name,
                                             userdata=userdata)

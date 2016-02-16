@@ -42,7 +42,7 @@ class NodeTests(unittest.TestCase):
         self.record_resource = mock.MagicMock()
         cloud_driver = aasemble.deployment.runner.CloudDriver(record_resource=self.record_resource)
         self.dr = aasemble.deployment.runner.DeploymentRunner(cloud_driver=cloud_driver)
-        self.node = aasemble.deployment.cloud.models.Node('name', None, None, [], None, self.dr)
+        self.node = aasemble.deployment.cloud.models.Node('name', None, None, [], None, False, self.dr)
 
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     def test_poll(self, get_nova_client):
@@ -268,7 +268,7 @@ class MainTests(unittest.TestCase):
         class Node(object):
             def __init__(self, name, ports, export):
                 self.name = name
-                self.info = {'export': export}
+                self.export = export
                 self.ports = ports
 
         self.dr.nodes = {'node1': Node('node1', [{'fixed_ip': '1.2.3.4',
@@ -623,6 +623,7 @@ class MainTests(unittest.TestCase):
                                                      [{'network': 'ephemeral', 'assign_floating_ip': True},
                                                                    {'network': 'passedthrough'}],
                                                      10,
+                                                     False,
                                                      userdata='foo',
                                                      keypair='key_x123',
                                                      runner=self.dr)
@@ -676,7 +677,7 @@ class MainTests(unittest.TestCase):
 
     @mock.patch('aasemble.deployment.cloud.models.Node.build')
     def test__create_node(self, node_build):
-        self.dr.nodes['existing_node'] = aasemble.deployment.cloud.models.Node('existing_node', None, None, [], None, self.dr)
+        self.dr.nodes['existing_node'] = aasemble.deployment.cloud.models.Node('existing_node', None, None, [], None, False, self.dr)
 
         self.assertEquals(self.dr._create_node('nodename', {}, 'keypair', ''),
                           'nodename')

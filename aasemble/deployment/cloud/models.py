@@ -1,16 +1,17 @@
 import time
 
 class Node(object):
-    def __init__(self, name, flavor, image, networks, disk, runner, keypair=None, userdata=None):
+    def __init__(self, name, flavor, image, networks, disk, export, runner, keypair=None, userdata=None):
         self.name = name
         self.flavor_name = flavor
         self.image_name = image
         self.networks = networks
         self.disk = disk
-
-        self.runner = runner
+        self.export = export
         self.keypair = keypair
         self.userdata = userdata
+
+        self.runner = runner
         self.server_id = None
         self.fip_ids = set()
         self.flavor = None
