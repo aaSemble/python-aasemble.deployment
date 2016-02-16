@@ -483,23 +483,6 @@ class MainTests(unittest.TestCase):
             self.assertIn(node, self.dr.nodes)
 
     @mock.patch('aasemble.deployment.runner.CloudDriver._get_neutron_client')
-    def test_create_network(self, _get_neutron_client):
-        nc = _get_neutron_client.return_value
-        nc.create_network.return_value = {'network': {'id': 'theuuid'}}
-        nc.create_subnet.return_value = {'subnet': {'id': 'thesubnetuuid'}}
-
-        self.dr.create_network('netname', {'cidr': '10.0.0.0/12'})
-
-        nc.create_network.assert_called_once_with({'network': {'name': 'netname',
-                                                               'admin_state_up': True}})
-        nc.create_subnet.assert_called_once_with({'subnet': {'name': 'netname',
-                                                             'cidr': '10.0.0.0/12',
-                                                             'ip_version': 4,
-                                                             'network_id': 'theuuid'}})
-        self.record_resource.assert_any_call('network', 'theuuid')
-        self.record_resource.assert_any_call('subnet', 'thesubnetuuid')
-
-    @mock.patch('aasemble.deployment.runner.CloudDriver._get_neutron_client')
     def test_create_security_group(self, _get_neutron_client):
         nc = _get_neutron_client.return_value
         nc.create_security_group.return_value = {'security_group': {'id': 'theuuid'}}
@@ -811,6 +794,24 @@ class OpenStackDriverTests(unittest.TestCase):
         self.cloud_driver.create_keypair(key_name, key_data, 3)
 
         nc.keypairs.create.assert_called_with(key_name, key_data)
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_neutron_client')
+    def test_create_network(self, _get_neutron_client):
+        nc = _get_neutron_client.return_value
+
+        nc.create_network.return_value = {'network': {'id': 'theuuid'}}
+        nc.create_subnet.return_value = {'subnet': {'id': 'thesubnetuuid'}}
+
+        self.cloud_driver.create_network('netname', {'cidr': '10.0.0.0/12'}, {})
+
+        nc.create_network.assert_called_once_with({'network': {'name': 'netname',
+                                                               'admin_state_up': True}})
+        nc.create_subnet.assert_called_once_with({'subnet': {'name': 'netname',
+                                                             'cidr': '10.0.0.0/12',
+                                                             'ip_version': 4,
+                                                             'network_id': 'theuuid'}})
+        self.record_resource.assert_any_call('network', 'theuuid')
+        self.record_resource.assert_any_call('subnet', 'thesubnetuuid')
 
     @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_neutron_client')
     def test_find_floating_network(self, _get_neutron_client):
