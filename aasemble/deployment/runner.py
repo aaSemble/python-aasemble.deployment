@@ -226,7 +226,7 @@ class DeploymentRunner(object):
                 if base_name in self.nodes:
                     raise exceptions.DuplicateResourceException('Node', node.name)
 
-                self.nodes[base_name] = models.Node(node.name, {}, self)
+                self.nodes[base_name] = models.Node(node.name, None, None, [], None, self)
                 for address in node.addresses.values():
                     mac = address[0]['OS-EXT-IPS-MAC:mac_addr']
                     port = ports_by_mac[mac]
@@ -435,7 +435,11 @@ class DeploymentRunner(object):
         if base_name in self.nodes:
             return
         node_name = self.add_suffix(base_name)
-        self.nodes[base_name] = models.Node(node_name, node_info,
+        self.nodes[base_name] = models.Node(node_name,
+                                            node_info.get('flavor'),
+                                            node_info.get('image'),
+                                            node_info.get('networks', []),
+                                            node_info.get('disk'),
                                             runner=self,
                                             keypair=keypair_name,
                                             userdata=userdata)

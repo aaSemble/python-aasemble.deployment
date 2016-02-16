@@ -42,7 +42,7 @@ class NodeTests(unittest.TestCase):
         self.record_resource = mock.MagicMock()
         cloud_driver = aasemble.deployment.runner.CloudDriver(record_resource=self.record_resource)
         self.dr = aasemble.deployment.runner.DeploymentRunner(cloud_driver=cloud_driver)
-        self.node = aasemble.deployment.cloud.models.Node('name', {}, self.dr)
+        self.node = aasemble.deployment.cloud.models.Node('name', None, None, [], None, self.dr)
 
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     def test_poll(self, get_nova_client):
@@ -66,10 +66,10 @@ class NodeTests(unittest.TestCase):
     @mock.patch('aasemble.deployment.cloud.models.Node.create_nics')
     @mock.patch('aasemble.deployment.cloud.models.time')
     def test_build(self, time, create_nics, get_cinder_client, get_neutron_client, get_nova_client):
-        self.node.info['image'] = 'someimage'
-        self.node.info['flavor'] = 'someflavor'
-        self.node.info['disk'] = 10
-        self.node.info['networks'] = mock.sentinel.Networks
+        self.node.image_name = 'someimage'
+        self.node.flavor_name = 'someflavor'
+        self.node.disk = 10
+        self.node.networks = mock.sentinel.Networks
 
         novaclient = get_nova_client.return_value
         novaclient.flavors.get.return_value = 'flavor_obj'
@@ -618,11 +618,11 @@ class MainTests(unittest.TestCase):
                             'flavors': {'small': 'smallid'}}
 
         node = aasemble.deployment.cloud.models.Node('test1_x123',
-                                                     {'image': 'trusty',
-                                                      'flavor': 'small',
-                                                      'disk': 10,
-                                                      'networks': [{'network': 'ephemeral', 'assign_floating_ip': True},
-                                                                   {'network': 'passedthrough'}]},
+                                                     'small',
+                                                     'trusty',
+                                                     [{'network': 'ephemeral', 'assign_floating_ip': True},
+                                                                   {'network': 'passedthrough'}],
+                                                     10,
                                                      userdata='foo',
                                                      keypair='key_x123',
                                                      runner=self.dr)
@@ -676,7 +676,7 @@ class MainTests(unittest.TestCase):
 
     @mock.patch('aasemble.deployment.cloud.models.Node.build')
     def test__create_node(self, node_build):
-        self.dr.nodes['existing_node'] = aasemble.deployment.cloud.models.Node('existing_node', {}, self.dr)
+        self.dr.nodes['existing_node'] = aasemble.deployment.cloud.models.Node('existing_node', None, None, [], None, self.dr)
 
         self.assertEquals(self.dr._create_node('nodename', {}, 'keypair', ''),
                           'nodename')

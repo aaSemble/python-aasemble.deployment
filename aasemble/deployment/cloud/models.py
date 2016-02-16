@@ -1,25 +1,29 @@
 import time
 
 class Node(object):
-    def __init__(self, name, info, runner, keypair=None, userdata=None):
+    def __init__(self, name, flavor, image, networks, disk, runner, keypair=None, userdata=None):
         self.name = name
-        self.info = info
+        self.flavor_name = flavor
+        self.image_name = image
+        self.networks = networks
+        self.disk = disk
+
         self.runner = runner
         self.keypair = keypair
         self.userdata = userdata
         self.server_id = None
         self.fip_ids = set()
+        self.flavor = None
+        self.image = None
         self.ports = []
         self.server_status = None
-        self.image = None
-        self.flavor = None
         self.attempts_left = runner.retry_count + 1
 
-        if self.info.get('image') in self.runner.mappings.get('images', {}):
-            self.info['image'] = self.runner.mappings['images'][self.info['image']]
+        if self.image_name in self.runner.mappings.get('images', {}):
+            self.image_name = self.runner.mappings['images'][self.image_name]
 
-        if self.info.get('flavor') in self.runner.mappings.get('flavors', {}):
-            self.info['flavor'] = self.runner.mappings['flavors'][self.info['flavor']]
+        if self.flavor_name in self.runner.mappings.get('flavors', {}):
+            self.flavor_name = self.runner.mappings['flavors'][self.flavor_name]
 
     def poll(self, desired_status='ACTIVE'):
         """
@@ -66,12 +70,12 @@ class Node(object):
 
     def build(self):
         if self.flavor is None:
-            self.flavor = self.runner.cloud_driver.get_flavor(self.info['flavor'])
+            self.flavor = self.runner.cloud_driver.get_flavor(self.flavor_name)
 
-        nics = [{'port-id': port_id} for port_id in self.create_nics(self.info['networks'])]
+        nics = [{'port-id': port_id} for port_id in self.create_nics(self.networks)]
 
-        volume = self.runner.create_volume(size=self.info['disk'],
-                                           image_ref=self.info['image'])
+        volume = self.runner.create_volume(size=self.disk,
+                                           image_ref=self.image)
 
         while volume.status != 'available':
             time.sleep(3)
