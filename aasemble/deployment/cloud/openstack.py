@@ -120,7 +120,7 @@ class OpenStackDriver(CloudDriver):
                 'network_id': network_id,
                 'security_groups': secgroups}
         port = nc.create_port({'port': port})['port']
-
+        self.record_resource('port', port['id'])
         return {'id': port['id'],
                 'fixed_ip': port['fixed_ips'][0]['ip_address'],
                 'mac': port['mac_address'],
@@ -204,6 +204,7 @@ class OpenStackDriver(CloudDriver):
         while attempts_left > 0:
             try:
                 nc.keypairs.create(name, keydata)
+                self.record_resource('keypair', name)
                 break
             except NovaConflict:
                 return

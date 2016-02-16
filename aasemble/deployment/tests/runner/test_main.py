@@ -40,8 +40,7 @@ class NodeTests(unittest.TestCase):
     def setUp(self):
         self.record_resource = mock.MagicMock()
         cloud_driver = aasemble.deployment.runner.CloudDriver(record_resource=self.record_resource)
-        self.dr = aasemble.deployment.runner.DeploymentRunner(record_resource=self.record_resource,
-                                                              cloud_driver=cloud_driver)
+        self.dr = aasemble.deployment.runner.DeploymentRunner(cloud_driver=cloud_driver)
         self.node = aasemble.deployment.runner.Node('name', {}, self.dr)
 
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
@@ -152,8 +151,7 @@ class MainTests(unittest.TestCase):
     def setUp(self):
         self.record_resource = mock.MagicMock()
         cloud_driver = aasemble.deployment.runner.CloudDriver(record_resource=self.record_resource)
-        self.dr = aasemble.deployment.runner.DeploymentRunner(record_resource=self.record_resource,
-                                                              cloud_driver=cloud_driver)
+        self.dr = aasemble.deployment.runner.DeploymentRunner(cloud_driver=cloud_driver)
 
     def test_load_yaml(self):
         mock_open = mock.mock_open()
@@ -654,8 +652,6 @@ class MainTests(unittest.TestCase):
                                              key_name='key_x123',
                                              flavor='smallflavorobject')
 
-        self.record_resource.assert_any_call('port', 'nicuuid1')
-        self.record_resource.assert_any_call('port', 'nicuuid2')
         self.record_resource.assert_any_call('server', 'serveruuid')
 
     def test_list_refs_human(self):

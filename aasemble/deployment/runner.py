@@ -192,7 +192,6 @@ class Node(object):
             port_name = '%s_eth%d' % (self.name, eth_idx)
             port_info = self.runner.create_port(port_name, network['network'],
                                                 [self.runner.secgroups[secgroup] for secgroup in network.get('securitygroups', [])])
-            self.runner.record_resource('port', port_info['id'])
             self.ports.append(port_info)
 
             if network.get('assign_floating_ip', False):
@@ -223,7 +222,7 @@ class Node(object):
                                                                            block_device_mapping=bdm,
                                                                            flavor=self.flavor, nics=nics,
                                                                            key_name=self.keypair, userdata=self.userdata)
-        self.runner.record_resource('server', server.id)
+        self.runner.cloud_driver.record_resource('server', server.id)
         self.server_id = server.id
         self.attempts_left -= 1
 
@@ -253,14 +252,13 @@ class FileResourceRecorder(object):
 
 class DeploymentRunner(object):
     def __init__(self, config=None, suffix=None, mappings=None, key=None,
-                 record_resource=None, retry_count=0, cloud_driver=None):
+                 retry_count=0, cloud_driver=None):
         self.cfg = config
         self.suffix = suffix
         self.mappings = mappings or {}
         self.key = key
         self.retry_count = retry_count
         self.cloud_driver = cloud_driver
-        self.record_resource = record_resource or (lambda *args, **kwargs: None)
 
         self.conncache = {}
         self.networks = {}
@@ -481,7 +479,6 @@ class DeploymentRunner(object):
         if self.key:
             keypair_name = self.add_suffix('pubkey')
             self.create_keypair(keypair_name, self.key)
-            self.record_resource('keypair', keypair_name)
         else:
             keypair_name = None
 
@@ -587,21 +584,12 @@ def main(argv=sys.argv[1:], stdout=sys.stdout):
                               mappings=load_mappings(args.mappings),
                               key=key,
                               retry_count=args.retry_count,
-                              record_resource=record_resource,
                               cloud_driver=CloudDriver(record_resource))
 
         if args.cont:
             dr.detect_existing_resources()
 
         dr.deploy(args.name)
-
-        if args.cleanup:
-            with open(args.cleanup, 'a+') as cleanup:
-                def record_resource(type_, id):
-                    cleanup.write('%s: %s\n' % (type_, id))
-                create_runnner_and_perform_deployment(record_resource)
-        else:
-            create_runnner_and_perform_deployment(None)
 
     def cleanup(args):
         dr = DeploymentRunner(cloud_driver=CloudDriver())
