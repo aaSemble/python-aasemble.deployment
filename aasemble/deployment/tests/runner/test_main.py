@@ -20,6 +20,7 @@ import mock
 from six import StringIO
 from six.moves import builtins
 
+import aasemble.deployment.cloud.models
 import aasemble.deployment.runner
 
 mappings_data = '''[images]
@@ -41,7 +42,7 @@ class NodeTests(unittest.TestCase):
         self.record_resource = mock.MagicMock()
         cloud_driver = aasemble.deployment.runner.CloudDriver(record_resource=self.record_resource)
         self.dr = aasemble.deployment.runner.DeploymentRunner(cloud_driver=cloud_driver)
-        self.node = aasemble.deployment.runner.Node('name', {}, self.dr)
+        self.node = aasemble.deployment.cloud.models.Node('name', {}, self.dr)
 
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     def test_poll(self, get_nova_client):
@@ -62,8 +63,8 @@ class NodeTests(unittest.TestCase):
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_cinder_client')
-    @mock.patch('aasemble.deployment.runner.Node.create_nics')
-    @mock.patch('aasemble.deployment.runner.time')
+    @mock.patch('aasemble.deployment.cloud.models.Node.create_nics')
+    @mock.patch('aasemble.deployment.cloud.models.time')
     def test_build(self, time, create_nics, get_cinder_client, get_neutron_client, get_nova_client):
         self.node.info['image'] = 'someimage'
         self.node.info['flavor'] = 'someflavor'
@@ -597,7 +598,7 @@ class MainTests(unittest.TestCase):
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_nova_client')
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_neutron_client')
     @mock.patch('aasemble.deployment.runner.CloudDriver.get_cinder_client')
-    @mock.patch('aasemble.deployment.runner.time')
+    @mock.patch('aasemble.deployment.cloud.models.time')
     def test_create_node(self, time, get_cinder_client, get_neutron_client, get_nova_client, create_port):
         nc = get_nova_client.return_value
 
@@ -616,15 +617,15 @@ class MainTests(unittest.TestCase):
         self.dr.mappings = {'images': {'trusty': 'trustyuuid'},
                             'flavors': {'small': 'smallid'}}
 
-        node = aasemble.deployment.runner.Node('test1_x123',
-                                               {'image': 'trusty',
-                                                'flavor': 'small',
-                                                'disk': 10,
-                                                'networks': [{'network': 'ephemeral', 'assign_floating_ip': True},
-                                                             {'network': 'passedthrough'}]},
-                                               userdata='foo',
-                                               keypair='key_x123',
-                                               runner=self.dr)
+        node = aasemble.deployment.cloud.models.Node('test1_x123',
+                                                     {'image': 'trusty',
+                                                      'flavor': 'small',
+                                                      'disk': 10,
+                                                      'networks': [{'network': 'ephemeral', 'assign_floating_ip': True},
+                                                                   {'network': 'passedthrough'}]},
+                                                     userdata='foo',
+                                                     keypair='key_x123',
+                                                     runner=self.dr)
 
         cinderclient = get_cinder_client.return_value
 
@@ -673,9 +674,9 @@ class MainTests(unittest.TestCase):
         aasemble.deployment.runner.list_refs(args, output)
         self.assertEquals(output.getvalue(), expected_value)
 
-    @mock.patch('aasemble.deployment.runner.Node.build')
+    @mock.patch('aasemble.deployment.cloud.models.Node.build')
     def test__create_node(self, node_build):
-        self.dr.nodes['existing_node'] = aasemble.deployment.runner.Node('existing_node', {}, self.dr)
+        self.dr.nodes['existing_node'] = aasemble.deployment.cloud.models.Node('existing_node', {}, self.dr)
 
         self.assertEquals(self.dr._create_node('nodename', {}, 'keypair', ''),
                           'nodename')
