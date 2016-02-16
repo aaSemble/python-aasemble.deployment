@@ -233,8 +233,7 @@ class DeploymentRunner(object):
                     self.nodes[base_name].ports.append(port)
 
     def delete_volume(self, uuid):
-        cc = self.get_cinder_client()
-        cc.volumes.delete(uuid)
+        self.cloud_driver.delete_volume(uuid)
 
     def delete_port(self, uuid):
         self.cloud_driver.delete_port(uuid)

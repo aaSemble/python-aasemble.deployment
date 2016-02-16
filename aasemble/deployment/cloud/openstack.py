@@ -18,7 +18,7 @@ def get_creds_from_env():
 
 
 class OpenStackDriver(CloudDriver):
-    def get_keystone_session(self):
+    def _get_keystone_session(self):
         from keystoneclient import session as keystone_session
         from keystoneclient.auth.identity import v2 as keystone_auth_id_v2
         if 'keystone_session' not in self.conncache:
@@ -29,60 +29,60 @@ class OpenStackDriver(CloudDriver):
     def get_keystone_client(self):
         from keystoneclient.v2_0 import client as keystone_client
         if 'keystone' not in self.conncache:
-            ks = self.get_keystone_session()
+            ks = self._get_keystone_session()
             self.conncache['keystone'] = keystone_client.Client(session=ks)
         return self.conncache['keystone']
 
-    def get_nova_client(self):
+    def _get_nova_client(self):
         import novaclient.client as novaclient
         if 'nova' not in self.conncache:
-            kwargs = {'session': self.get_keystone_session()}
+            kwargs = {'session': self._get_keystone_session()}
             if 'OS_REGION_NAME' in os.environ:
                 kwargs['region_name'] = os.environ['OS_REGION_NAME']
             self.conncache['nova'] = novaclient.Client("2", **kwargs)
         return self.conncache['nova']
 
-    def get_cinder_client(self):
+    def _get_cinder_client(self):
         import cinderclient.client as cinderclient
         if 'cinder' not in self.conncache:
-            kwargs = {'session': self.get_keystone_session()}
+            kwargs = {'session': self._get_keystone_session()}
             if 'OS_REGION_NAME' in os.environ:
                 kwargs['region_name'] = os.environ['OS_REGION_NAME']
             self.conncache['cinder'] = cinderclient.Client('1', **kwargs)
         return self.conncache['cinder']
 
-    def get_neutron_client(self):
+    def _get_neutron_client(self):
         import neutronclient.neutron.client as neutronclient
         if 'neutron' not in self.conncache:
-            kwargs = {'session': self.get_keystone_session()}
+            kwargs = {'session': self._get_keystone_session()}
             if 'OS_REGION_NAME' in os.environ:
                 kwargs['region_name'] = os.environ['OS_REGION_NAME']
             self.conncache['neutron'] = neutronclient.Client('2.0', **kwargs)
         return self.conncache['neutron']
 
     def get_networks(self):
-        return self.get_neutron_client().list_networks()['networks']
+        return self._get_neutron_client().list_networks()['networks']
 
     def get_ports(self):
-        return self.get_neutron_client().list_ports()['ports']
+        return self._get_neutron_client().list_ports()['ports']
 
     def get_floating_ips(self):
-        return self.get_neutron_client().list_floatingips()['floatingips']
+        return self._get_neutron_client().list_floatingips()['floatingips']
 
     def get_security_groups(self):
-        return self.get_neutron_client().list_security_groups()['security_groups']
+        return self._get_neutron_client().list_security_groups()['security_groups']
 
     def delete_port(self, uuid):
-        self.get_neutron_client().delete_port(uuid)
+        self._get_neutron_client().delete_port(uuid)
 
     def delete_network(self, uuid):
-        self.get_neutron_client().delete_network(uuid)
+        self._get_neutron_client().delete_network(uuid)
 
     def delete_router(self, uuid):
-        self.get_neutron_client().delete_router(uuid)
+        self._get_neutron_client().delete_router(uuid)
 
     def delete_subnet(self, uuid):
-        nc = self.get_neutron_client()
+        nc = self._get_neutron_client()
         try:
             nc.delete_subnet(uuid)
         except NeutronConflict:
@@ -104,18 +104,18 @@ class OpenStackDriver(CloudDriver):
                 raise
 
     def delete_secgroup(self, uuid):
-        self.get_neutron_client().delete_security_group(uuid)
+        self._get_neutron_client().delete_security_group(uuid)
 
     def delete_secgroup_rule(self, uuid):
-        nc = self.get_neutron_client()
+        nc = self._get_neutron_client()
         nc.delete_security_group_rule(uuid)
 
     def delete_floatingip(self, uuid):
-        nc = self.get_neutron_client()
+        nc = self._get_neutron_client()
         nc.delete_floatingip(uuid)
 
     def create_port(self, name, network, network_id, secgroups):
-        nc = self.get_neutron_client()
+        nc = self._get_neutron_client()
         port = {'name': name,
                 'admin_state_up': True,
                 'network_id': network_id,
@@ -128,12 +128,12 @@ class OpenStackDriver(CloudDriver):
                 'network_name': network}
 
     def find_floating_network(self, ):
-        nc = self.get_neutron_client()
+        nc = self._get_neutron_client()
         networks = nc.list_networks(**{'router:external': True})
         return networks['networks'][0]['id']
 
     def create_floating_ip(self):
-        nc = self.get_neutron_client()
+        nc = self._get_neutron_client()
         floating_network = self.find_floating_network()
         floatingip = {'floating_network_id': floating_network}
         floatingip = nc.create_floatingip({'floatingip': floatingip})
@@ -142,11 +142,11 @@ class OpenStackDriver(CloudDriver):
                 floatingip['floatingip']['floating_ip_address'])
 
     def associate_floating_ip(self, port_id, fip_id):
-        nc = self.get_neutron_client()
+        nc = self._get_neutron_client()
         nc.update_floatingip(fip_id, {'floatingip': {'port_id': port_id}})
 
     def create_network(self, name, info, mappings):
-        nc = self.get_neutron_client()
+        nc = self._get_neutron_client()
         network = {'name': name, 'admin_state_up': True}
         network = nc.create_network({'network': network})
         self.record_resource('network', network['network']['id'])
@@ -164,7 +164,7 @@ class OpenStackDriver(CloudDriver):
         return network['network']['id']
 
     def create_security_group(self, base_name, name, info, secgroups):
-        nc = self.get_neutron_client()
+        nc = self._get_neutron_client()
 
         secgroup = {'name': name}
         secgroup = nc.create_security_group({'security_group': secgroup})['security_group']
@@ -189,18 +189,22 @@ class OpenStackDriver(CloudDriver):
             self.record_resource('secgroup_rule', secgroup_rule['security_group_rule']['id'])
 
     def get_servers(self):
-        return self.get_nova_client().servers.list()
+        return self._get_nova_client().servers.list()
 
     def delete_keypair(self, name):
-        nc = self.get_nova_client()
+        nc = self._get_nova_client()
         nc.keypairs.delete(name)
 
     def delete_server(self, uuid):
-        nc = self.get_nova_client()
+        nc = self._get_nova_client()
         nc.servers.delete(uuid)
 
+    def delete_volume(self, uuid):
+        cc = self._get_cinder_client()
+        cc.volumes.delete(uuid)
+
     def create_keypair(self, name, keydata, retry_count):
-        nc = self.get_nova_client()
+        nc = self._get_nova_client()
         attempts_left = retry_count + 1
         while attempts_left > 0:
             try:
@@ -216,7 +220,7 @@ class OpenStackDriver(CloudDriver):
                 attempts_left -= 1
 
     def create_volume(self, size, image_ref, retry_count):
-        cc = self.get_cinder_client()
+        cc = self._get_cinder_client()
         attempts_left = retry_count + 1
         while attempts_left > 0:
             try:
@@ -231,15 +235,15 @@ class OpenStackDriver(CloudDriver):
                 attempts_left -= 1
 
     def get_flavor(self, name):
-        return self.get_nova_client().flavors.get(name)
+        return self._get_nova_client().flavors.get(name)
 
     def get_volume(self, id):
-        return self.get_cinder_client().volumes.get(id)
+        return self._get_cinder_client().volumes.get(id)
 
     def create_server(self, name, image, block_device_mapping,
                       flavor, nics, key_name, userdata):
 
-        server = self.get_nova_client().servers.create(name, image=image,
+        server = self._get_nova_client().servers.create(name, image=image,
                                                        block_device_mapping=block_device_mapping,
                                                        flavor=flavor, nics=nics, key_name=key_name,
                                                        userdata=userdata)
@@ -251,7 +255,7 @@ class OpenStackDriver(CloudDriver):
         This one poll nova and return the server status
         """
         if server.server_status != desired_status:
-            server.server_status = self.get_nova_client().servers.get(server.server_id).status
+            server.server_status = self._get_nova_client().servers.get(server.server_id).status
         return server.server_status
 
     def clean_server(self, server):

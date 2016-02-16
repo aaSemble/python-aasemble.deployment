@@ -48,6 +48,9 @@ class CloudDriver(object):
     def delete_port(self, uuid):
         raise NotImplementedError()
 
+    def delete_volume(self, uuid):
+        raise NotImplementedError()
+
     def delete_router(self, uuid):
         raise NotImplementedError()
 
