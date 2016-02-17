@@ -9,12 +9,12 @@ from aasemble.deployment.cloud import models
 from aasemble.deployment.cloud.base import CloudDriver
 
 
-def get_creds_from_env():
+def get_creds_from_env(env=os.environ):
     d = {}
-    d['username'] = os.environ['OS_USERNAME']
-    d['password'] = os.environ['OS_PASSWORD']
-    d['auth_url'] = os.environ['OS_AUTH_URL']
-    d['tenant_name'] = os.environ['OS_TENANT_NAME']
+    d['username'] = env['OS_USERNAME']
+    d['password'] = env['OS_PASSWORD']
+    d['auth_url'] = env['OS_AUTH_URL']
+    d['tenant_name'] = env['OS_TENANT_NAME']
     return d
 
 
@@ -31,7 +31,7 @@ class OpenStackDriver(CloudDriver):
     def create_keypair(self, name, keydata, retry_count):
         nc = self._get_nova_client()
         attempts_left = retry_count + 1
-        while attempts_left > 0:
+        while True:
             try:
                 nc.keypairs.create(name, keydata)
                 self.record_resource('keypair', name)
@@ -41,7 +41,6 @@ class OpenStackDriver(CloudDriver):
             except Exception as e:
                 if attempts_left == 0:
                     raise
-                print(e)
                 attempts_left -= 1
 
     def create_network(self, name, info, mappings):
@@ -75,14 +74,14 @@ class OpenStackDriver(CloudDriver):
                 'mac': port['mac_address'],
                 'network_name': network}
 
-    def create_security_group(self, base_name, name, info, secgroups):
+    def create_security_group(self, base_name, name, info):
         nc = self._get_neutron_client()
 
         secgroup = {'name': name}
         secgroup = nc.create_security_group({'security_group': secgroup})['security_group']
 
         self.record_resource('secgroup', secgroup['id'])
-        secgroups[base_name] = secgroup['id']
+        self.secgroups[base_name] = secgroup['id']
 
         for rule in (info or []):
             secgroup_rule = {"direction": "ingress",
@@ -93,7 +92,7 @@ class OpenStackDriver(CloudDriver):
                              "security_group_id": secgroup['id']}
 
             if 'source_group' in rule:
-                secgroup_rule['remote_group_id'] = secgroups.get(rule['source_group'], rule['source_group'])
+                secgroup_rule['remote_group_id'] = self.secgroups.get(rule['source_group'], rule['source_group'])
             else:
                 secgroup_rule['remote_ip_prefix'] = rule['cidr']
 

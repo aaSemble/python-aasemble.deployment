@@ -269,7 +269,7 @@ class DeploymentRunner(object):
 
     def create_security_group(self, base_name, info):
         name = self.add_suffix(base_name)
-        self.cloud_driver.create_security_group(base_name, name, info, self.secgroups)
+        self.cloud_driver.create_security_group(base_name, name, info)
 
     def build_env_prefix(self, details):
         env_prefix = ''
