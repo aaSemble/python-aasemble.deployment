@@ -19,6 +19,10 @@ def get_creds_from_env(env=os.environ):
 
 
 class OpenStackDriver(CloudDriver):
+    def __init__(self, *args, **kwargs):
+        self.conncache = {}
+        super(OpenStackDriver, self).__init__(*args, **kwargs)
+
     def create_floating_ip(self):
         nc = self._get_neutron_client()
         floating_network = self._find_floating_network()
@@ -38,7 +42,7 @@ class OpenStackDriver(CloudDriver):
                 break
             except NovaConflict:
                 return
-            except Exception as e:
+            except Exception:
                 if attempts_left == 0:
                     raise
                 attempts_left -= 1
@@ -102,17 +106,16 @@ class OpenStackDriver(CloudDriver):
     def create_volume(self, size, image_ref, retry_count):
         cc = self._get_cinder_client()
         attempts_left = retry_count + 1
-        while attempts_left > 0:
+        while True:
             try:
                 volume = cc.volumes.create(size=size,
                                            imageRef=image_ref)
                 self.record_resource('volume', volume.id)
                 return volume
-            except Exception as e:
+            except Exception:
+                attempts_left -= 1
                 if attempts_left == 0:
                     raise
-                print(e)
-                attempts_left -= 1
 
     def get_floating_ips(self):
         return self._get_neutron_client().list_floatingips()['floatingips']
@@ -199,9 +202,9 @@ class OpenStackDriver(CloudDriver):
         bdm = {'vda': '%s:::1' % (volume.id,)}
 
         server_info = self._create_server(name=server.name, image=None,
-                                         block_device_mapping=bdm,
-                                         flavor=server.flavor, nics=nics,
-                                         key_name=server.keypair, userdata=server.userdata)
+                                          block_device_mapping=bdm,
+                                          flavor=server.flavor, nics=nics,
+                                          key_name=server.keypair, userdata=server.userdata)
         server.server_id = server_info.id
         server.attempts_left -= 1
 
@@ -247,12 +250,12 @@ class OpenStackDriver(CloudDriver):
         return self._get_cinder_client().volumes.get(id)
 
     def _create_server(self, name, image, block_device_mapping,
-                      flavor, nics, key_name, userdata):
+                       flavor, nics, key_name, userdata):
 
         server = self._get_nova_client().servers.create(name, image=image,
-                                                       block_device_mapping=block_device_mapping,
-                                                       flavor=flavor, nics=nics, key_name=key_name,
-                                                       userdata=userdata)
+                                                        block_device_mapping=block_device_mapping,
+                                                        flavor=flavor, nics=nics, key_name=key_name,
+                                                        userdata=userdata)
         self.record_resource('server', server.id)
         return server
 

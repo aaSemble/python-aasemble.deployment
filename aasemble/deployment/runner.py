@@ -455,7 +455,6 @@ class DeploymentRunner(object):
             func(details)
 
 
-
 def main(argv=sys.argv[1:], stdout=sys.stdout):
     def get_resource_recorder_class(args):
         if args.cleanup:

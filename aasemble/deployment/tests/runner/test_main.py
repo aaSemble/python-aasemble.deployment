@@ -127,6 +127,7 @@ class NodeTests(unittest.TestCase):
         delete_server.assert_any_call('serveruuid')
         self.assertEquals(self.node.server_id, None)
 
+
 class MainTests(unittest.TestCase):
     def setUp(self):
         self.record_resource = mock.MagicMock()
@@ -553,7 +554,7 @@ class MainTests(unittest.TestCase):
                                  'small',
                                  'trusty',
                                  [{'network': 'ephemeral', 'assign_floating_ip': True},
-                                               {'network': 'passedthrough'}],
+                                  {'network': 'passedthrough'}],
                                  10,
                                  False,
                                  userdata='foo',
@@ -838,11 +839,11 @@ class OpenStackDriverTests(unittest.TestCase):
         self.cloud_driver.create_network('netname', {'cidr': '10.0.0.0/12'}, mappings or {})
 
         self.nc.create_network.assert_called_once_with({'network': {'name': 'netname',
-                                                               'admin_state_up': True}})
+                                                                    'admin_state_up': True}})
         self.nc.create_subnet.assert_called_once_with({'subnet': {'name': 'netname',
-                                                             'cidr': '10.0.0.0/12',
-                                                             'ip_version': 4,
-                                                             'network_id': 'theuuid'}})
+                                                                  'cidr': '10.0.0.0/12',
+                                                                  'ip_version': 4,
+                                                                  'network_id': 'theuuid'}})
         self.record_resource.assert_any_call('network', 'theuuid')
         self.record_resource.assert_any_call('subnet', 'thesubnetuuid')
 
@@ -850,7 +851,6 @@ class OpenStackDriverTests(unittest.TestCase):
     def test_create_network_with_default_router(self, _get_neutron_client):
         self.test_create_network(mappings={'routers': {'*': 'routeruuid'}})
         self.nc.add_interface_router.assert_called_with('routeruuid', {'subnet_id': 'thesubnetuuid'})
-
 
     @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_neutron_client')
     def test_create_port(self, _get_neutron_client):
@@ -881,7 +881,6 @@ class OpenStackDriverTests(unittest.TestCase):
                                  'network_name': 'network_id',
                                  'mac': '02:12:98:ee:fe:76',
                                  'fixed_ip': '10.0.0.4'})
-
 
     @mock.patch('aasemble.deployment.runner.CloudDriver._get_neutron_client')
     def test_create_security_group(self, _get_neutron_client):
@@ -919,6 +918,242 @@ class OpenStackDriverTests(unittest.TestCase):
         self.record_resource.assert_any_call('secgroup_rule', 'theruleuuid1')
         self.record_resource.assert_any_call('secgroup_rule', 'theruleuuid2')
 
+    @mock.patch('aasemble.deployment.runner.CloudDriver._get_cinder_client')
+    def test_create_volume(self, _get_cinder_client):
+        cc = _get_cinder_client.return_value
+        cc.volumes.create.return_value.id = 'volumeid'
+
+        self.assertEquals(self.cloud_driver.create_volume(100, 'myimage', 0), cc.volumes.create.return_value)
+
+        cc.volumes.create.assert_called_with(size=100, imageRef='myimage')
+        self.record_resource.assert_called_with('volume', 'volumeid')
+
+    @mock.patch('aasemble.deployment.runner.CloudDriver._get_cinder_client')
+    def test_create_volume_retries(self, _get_cinder_client):
+        class SomeException(Exception):
+            pass
+
+        cc = _get_cinder_client.return_value
+        volume = mock.MagicMock()
+        volume.id = 'volumeid'
+        cc.volumes.create.side_effect = [SomeException] * 2 + [volume]
+
+        self.assertEquals(self.cloud_driver.create_volume(100, 'myimage', 2), volume)
+
+        cc.volumes.create.assert_called_with(size=100, imageRef='myimage')
+        self.record_resource.assert_called_with('volume', 'volumeid')
+
+    @mock.patch('aasemble.deployment.runner.CloudDriver._get_cinder_client')
+    def test_create_volume_gives_up(self, _get_cinder_client):
+        class SomeException(Exception):
+            pass
+
+        cc = _get_cinder_client.return_value
+        cc.volumes.create.side_effect = [SomeException] * 3
+
+        self.assertRaises(SomeException, self.cloud_driver.create_volume, 100, 'myimage', 2)
+
+        cc.volumes.create.assert_called_with(size=100, imageRef='myimage')
+        self.record_resource.assert_not_called()
+
+    @mock.patch('aasemble.deployment.runner.CloudDriver._get_neutron_client')
+    def test_get_floating_ips(self, _get_neutron_client):
+        nc = _get_neutron_client.return_value
+        self.assertEquals(self.cloud_driver.get_floating_ips(), nc.list_floatingips()['floatingips'])
+
+    @mock.patch('aasemble.deployment.runner.CloudDriver._get_neutron_client')
+    def test_get_networks(self, _get_neutron_client):
+        nc = _get_neutron_client.return_value
+        self.assertEquals(self.cloud_driver.get_networks(), nc.list_networks()['networks'])
+
+    @mock.patch('aasemble.deployment.runner.CloudDriver._get_neutron_client')
+    def test_get_ports(self, _get_neutron_client):
+        nc = _get_neutron_client.return_value
+        self.assertEquals(self.cloud_driver.get_ports(), nc.list_ports()['ports'])
+
+    @mock.patch('aasemble.deployment.runner.CloudDriver._get_neutron_client')
+    def test_get_security_groups(self, _get_neutron_client):
+        nc = _get_neutron_client.return_value
+        self.assertEquals(self.cloud_driver.get_security_groups(), nc.list_security_groups()['security_groups'])
+
+    @mock.patch('aasemble.deployment.runner.CloudDriver._get_nova_client')
+    def test_get_servers(self, _get_nova_client):
+        nc = _get_nova_client.return_value
+        self.assertEquals(self.cloud_driver.get_servers(), nc.servers.list())
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_neutron_client')
+    def test_delete_floatingip(self, _get_neutron_client):
+        nc = _get_neutron_client.return_value
+
+        self.cloud_driver.delete_floatingip(cloud_models.FloatingIP(id='someid', ip_address='1.1.1.1'))
+        nc.delete_floatingip.assert_called_with('someid')
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_nova_client')
+    def test_delete_keypair(self, _get_nova_client):
+        nc = _get_nova_client.return_value
+
+        self.cloud_driver.delete_keypair('thekeyname')
+        nc.keypairs.delete('thekeyname')
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_neutron_client')
+    def test_delete_network(self, _get_neutron_client):
+        nc = _get_neutron_client.return_value
+
+        self.cloud_driver.delete_network('theuuid')
+        nc.delete_network.assert_called_with('theuuid')
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_neutron_client')
+    def test_delete_port(self, _get_neutron_client):
+        nc = _get_neutron_client.return_value
+
+        self.cloud_driver.delete_port('theuuid')
+        nc.delete_port.assert_called_with('theuuid')
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_neutron_client')
+    def test_delete_router(self, _get_neutron_client):
+        nc = _get_neutron_client.return_value
+
+        self.cloud_driver.delete_router('theuuid')
+        nc.delete_router.assert_called_with('theuuid')
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_cinder_client')
+    def test_delete_volume(self, _get_cinder_client):
+        cc = _get_cinder_client.return_value
+
+        self.cloud_driver.delete_volume('theuuid')
+        cc.volumes.delete('theuuid')
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_neutron_client')
+    def test_delete_secgroup(self, _get_neutron_client):
+        nc = _get_neutron_client.return_value
+
+        self.cloud_driver.delete_secgroup('theuuid')
+        nc.delete_security_group.assert_called_with('theuuid')
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_neutron_client')
+    def test_delete_secgroup_rule(self, _get_neutron_client):
+        nc = _get_neutron_client.return_value
+
+        self.cloud_driver.delete_secgroup_rule('theuuid')
+        nc.delete_security_group_rule.assert_called_with('theuuid')
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_neutron_client')
+    def test_delete_subnet(self, _get_neutron_client):
+        nc = _get_neutron_client.return_value
+
+        self.cloud_driver.delete_subnet('theuuid')
+        nc.delete_subnet.assert_called_with('theuuid')
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_neutron_client')
+    def test_delete_subnet_with_router(self, _get_neutron_client):
+        from neutronclient.common.exceptions import Conflict as NeutronConflict
+        nc = _get_neutron_client.return_value
+        nc.list_ports.return_value = {'ports': [{'device_id': 'port_device_id',
+                                                 'fixed_ips': [{'subnet_id': 'theuuid'}]}]}
+
+        nc.delete_subnet.side_effect = [NeutronConflict, None]
+        self.cloud_driver.delete_subnet('theuuid')
+
+        self.assertEquals(nc.delete_subnet.call_args_list, [mock.call('theuuid')] * 2)
+        nc.remove_interface_router.assert_called_with('port_device_id', {'subnet_id': 'theuuid'})
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_neutron_client')
+    def test_delete_subnet_with_some_other_conflict(self, _get_neutron_client):
+        from neutronclient.common.exceptions import Conflict as NeutronConflict
+        nc = _get_neutron_client.return_value
+        nc.list_ports.return_value = {'ports': []}
+
+        nc.delete_subnet.side_effect = NeutronConflict
+
+        self.assertRaises(NeutronConflict, self.cloud_driver.delete_subnet, 'theuuid')
+
+        nc.delete_subnet.assert_called_with('theuuid')
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_neutron_client')
+    def test_associate_floating_ip(self, _get_neutron_client):
+        nc = _get_neutron_client.return_value
+
+        fip = cloud_models.FloatingIP(id='fip_id', ip_address='1.1.1.1')
+        self.cloud_driver.associate_floating_ip('portuuid', fip)
+
+        nc.update_floatingip.assert_called_with(fip.id, {'floatingip': {'port_id': 'portuuid'}})
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._create_server')
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_flavor')
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver.create_volume')
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_volume')
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._create_nics')
+    @mock.patch('aasemble.deployment.cloud.openstack.time')
+    def test_build_server(self, time, _create_nics, _get_volume, create_volume, _get_flavor, _create_server):
+        volume = create_volume.return_value
+        volume.id = 'volid'
+        states = ['building', 'building', 'available']
+
+        def prepare_volume(volume_id):
+            volume.status = states.pop(0)
+            return volume
+
+        _get_volume.side_effect = prepare_volume
+
+        node = cloud_models.Node(name='servername',
+                                 flavor='flavorname',
+                                 image='imagename',
+                                 networks=[],
+                                 disk=10,
+                                 export=True,
+                                 runner=None)
+
+        self.cloud_driver.build_server(node)
+
+        _create_server.assert_called_with(name='servername', image=None,
+                                          block_device_mapping={'vda': 'volid:::1'},
+                                          flavor=_get_flavor.return_value, nics=[],
+                                          key_name=None, userdata=None)
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_nova_client')
+    def test_poll_server(self, _get_nova_client):
+        nc = _get_nova_client.return_value
+        nc.servers.get.return_value.status = 'ACTIVE'
+
+        node = cloud_models.Node(name='servername',
+                                 flavor='flavorname',
+                                 image='imagename',
+                                 networks=[],
+                                 disk=10,
+                                 export=True,
+                                 runner=None)
+
+        self.assertEquals(self.cloud_driver.poll_server(node), 'ACTIVE')
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver.delete_floatingip')
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver.delete_port')
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._delete_server')
+    def test_clean_server(self, _delete_server, delete_port, delete_floatingip):
+        node = cloud_models.Node(name='servername',
+                                 flavor='flavorname',
+                                 image='imagename',
+                                 networks=[],
+                                 disk=10,
+                                 export=True,
+                                 runner=None)
+        fip1 = cloud_models.FloatingIP(id='fip1', ip_address='1.1.1.1')
+        fip2 = cloud_models.FloatingIP(id='fip2', ip_address='2.2.2.2')
+        node.fips = set([fip1, fip2])
+        port1 = {'id': 'portid1'}
+        port2 = {'id': 'portid2'}
+        node.ports = [port1, port2]
+
+        self.cloud_driver.clean_server(node)
+
+        delete_floatingip.assert_any_call(fip1)
+        delete_floatingip.assert_any_call(fip2)
+
+        delete_port.assert_any_call('portid1')
+        delete_port.assert_any_call('portid2')
+
+        self.assertEquals(node.fips, set())
+        self.assertEquals(node.ports, [])
+
     @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_neutron_client')
     def test_find_floating_network(self, _get_neutron_client):
         nc = _get_neutron_client.return_value
@@ -927,6 +1162,49 @@ class OpenStackDriverTests(unittest.TestCase):
         self.assertEquals(self.cloud_driver._find_floating_network(), 'netuuid')
 
         nc.list_networks.assert_called_once_with(**{'router:external': True})
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_nova_client')
+    def test_delete_server(self, _get_nova_client):
+        nc = _get_nova_client.return_value
+
+        self.cloud_driver._delete_server('theuuid')
+        nc.servers.delete.assert_called_with('theuuid')
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_nova_client')
+    def test_get_flavor(self, _get_nova_client):
+        nc = _get_nova_client.return_value
+
+        self.assertEquals(self.cloud_driver._get_flavor('flavorname'), nc.flavors.get('flavorname'))
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_cinder_client')
+    def test_get_volume(self, _get_cinder_client):
+        cc = _get_cinder_client.return_value
+
+        self.assertEquals(self.cloud_driver._get_volume('volumeid'), cc.volumes.get('volumeid'))
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_nova_client')
+    def test_create_server(self, _get_nova_client):
+        nc = _get_nova_client.return_value
+
+        nc.servers.create.return_value.id = 'serverid'
+
+        self.cloud_driver._create_server(name=mock.sentinel.server_name,
+                                         image=mock.sentinel.image,
+                                         block_device_mapping=mock.sentinel.block_device_mapping,
+                                         flavor=mock.sentinel.flavor,
+                                         nics=[mock.sentinel.nic1, mock.sentinel.nic2],
+                                         key_name=mock.sentinel.key_name,
+                                         userdata=mock.sentinel.userdata)
+
+        nc.servers.create.assert_called_with(mock.sentinel.server_name,
+                                             image=mock.sentinel.image,
+                                             block_device_mapping=mock.sentinel.block_device_mapping,
+                                             flavor=mock.sentinel.flavor,
+                                             nics=[mock.sentinel.nic1, mock.sentinel.nic2],
+                                             key_name=mock.sentinel.key_name,
+                                             userdata=mock.sentinel.userdata)
+
+        self.record_resource.assert_called_with('server', 'serverid')
 
     @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver.create_port')
     @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver.create_floating_ip')
@@ -952,3 +1230,66 @@ class OpenStackDriverTests(unittest.TestCase):
 
         self.assertEquals(nics, ['port1uuid', 'port2uuid'])
 
+    @mock.patch('aasemble.deployment.cloud.openstack.get_creds_from_env')
+    @mock.patch('keystoneclient.auth.identity.v2.Password')
+    @mock.patch('keystoneclient.session.Session')
+    def test_get_keystone_session(self, Session, Password, get_creds_from_env):
+        get_creds_from_env.return_value = {'auth_url': 'theauthurl',
+                                           'password': 'thepassword',
+                                           'tenant_name': 'thetenantname',
+                                           'username': 'theusername'}
+        self.assertEquals(self.cloud_driver._get_keystone_session(), Session.return_value)
+
+        Password.assert_called_with(**get_creds_from_env.return_value)
+        Session.assert_called_with(auth=Password.return_value)
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_keystone_session')
+    @mock.patch('novaclient.client.Client')
+    def test_get_nova_client(self, Client, _get_keystone_session):
+        self.assertEquals(self.cloud_driver._get_nova_client(), Client.return_value)
+        Client.assert_called_with("2", session=_get_keystone_session.return_value)
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_keystone_session')
+    @mock.patch('novaclient.client.Client')
+    def test_get_nova_client_with_region(self, Client, _get_keystone_session):
+        saved_environ = dict(os.environ)
+        try:
+            os.environ['OS_REGION_NAME'] = 'theregion'
+            self.assertEquals(self.cloud_driver._get_nova_client(), Client.return_value)
+            Client.assert_called_with("2", region_name='theregion', session=_get_keystone_session.return_value)
+        finally:
+            os.environ = saved_environ
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_keystone_session')
+    @mock.patch('cinderclient.client.Client')
+    def test_get_cinder_client(self, Client, _get_keystone_session):
+        self.assertEquals(self.cloud_driver._get_cinder_client(), Client.return_value)
+        Client.assert_called_with("1", session=_get_keystone_session.return_value)
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_keystone_session')
+    @mock.patch('cinderclient.client.Client')
+    def test_get_cinder_client_with_region(self, Client, _get_keystone_session):
+        saved_environ = dict(os.environ)
+        try:
+            os.environ['OS_REGION_NAME'] = 'theregion'
+            self.assertEquals(self.cloud_driver._get_cinder_client(), Client.return_value)
+            Client.assert_called_with("1", region_name='theregion', session=_get_keystone_session.return_value)
+        finally:
+            os.environ = saved_environ
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_keystone_session')
+    @mock.patch('neutronclient.neutron.client.Client')
+    def test_get_neutron_client(self, Client, _get_keystone_session):
+        self.assertEquals(self.cloud_driver._get_neutron_client(), Client.return_value)
+        Client.assert_called_with("2.0", session=_get_keystone_session.return_value)
+
+    @mock.patch('aasemble.deployment.cloud.openstack.OpenStackDriver._get_keystone_session')
+    @mock.patch('neutronclient.neutron.client.Client')
+    def test_get_neutron_client_with_region(self, Client, _get_keystone_session):
+        saved_environ = dict(os.environ)
+        try:
+            os.environ['OS_REGION_NAME'] = 'theregion'
+            self.assertEquals(self.cloud_driver._get_neutron_client(), Client.return_value)
+            Client.assert_called_with("2.0", region_name='theregion', session=_get_keystone_session.return_value)
+        finally:
+            os.environ = saved_environ

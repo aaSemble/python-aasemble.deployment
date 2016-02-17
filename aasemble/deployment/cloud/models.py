@@ -1,5 +1,3 @@
-import time
-
 class Node(object):
     def __init__(self, name, flavor, image, networks, disk, export, runner, keypair=None, userdata=None, attempts_left=1):
         self.name = name
@@ -22,10 +20,14 @@ class Node(object):
 
     @property
     def mapped_flavor_name(self):
+        if self.runner is None:
+            return self.flavor_name
         return self.runner.mappings.get('flavors', {}).get(self.flavor_name, self.flavor_name)
 
     @property
     def mapped_image_name(self):
+        if self.runner is None:
+            return self.image_name
         return self.runner.mappings.get('images', {}).get(self.image_name, self.image_name)
 
     def poll(self, desired_status='ACTIVE'):
@@ -61,6 +63,7 @@ class FloatingIP(object):
 
     def __hash__(self):
         return hash(self.id) ^ hash(self.ip_address)
+
 
 class SecurityGroup(object):
     pass
