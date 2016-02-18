@@ -1,0 +1,6 @@
+nodes:
+  webapp:
+    flavor: webapp
+    image: trusty
+    disk: 10
+    export: true

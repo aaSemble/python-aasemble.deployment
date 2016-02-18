@@ -187,8 +187,8 @@ class OpenStackDriver(CloudDriver):
         nc.update_floatingip(fip.id, {'floatingip': {'port_id': port_id}})
 
     def build_server(self, server):
-        if server.flavor is None:
-            server.flavor = self._get_flavor(server.mapped_flavor_name)
+        if not hasattr(server, 'flavor_obj'):
+            server.flavor_obj = self._get_flavor(server.mapped_flavor)
 
         nics = [{'port-id': port_id} for port_id in self._create_nics(server, server.networks)]
 
@@ -203,7 +203,7 @@ class OpenStackDriver(CloudDriver):
 
         server_info = self._create_server(name=server.name, image=None,
                                           block_device_mapping=bdm,
-                                          flavor=server.flavor, nics=nics,
+                                          flavor=server.flavor_obj, nics=nics,
                                           key_name=server.keypair, userdata=server.userdata)
         server.server_id = server_info.id
         server.attempts_left -= 1

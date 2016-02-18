@@ -1,0 +1,15 @@
+nodes:
+  webapp:
+    count: 2
+    flavor: webapp
+    image: trusty
+    disk: 10
+    export: true
+    security_groups:
+      - webapp
+security_groups:
+  webapp:
+  - cidr: 0.0.0.0/0
+    from_port: 443
+    to_port: 443
+    protocol: tcp

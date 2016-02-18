@@ -67,8 +67,8 @@ class NodeTests(unittest.TestCase):
     @mock.patch('aasemble.deployment.runner.CloudDriver._create_nics')
     @mock.patch('aasemble.deployment.cloud.openstack.time')
     def test_build(self, time, create_nics, _get_cinder_client, _get_neutron_client, _get_nova_client):
-        self.node.image_name = 'someimage'
-        self.node.flavor_name = 'someflavor'
+        self.node.image = 'someimage'
+        self.node.flavor = 'someflavor'
         self.node.disk = 10
         self.node.networks = mock.sentinel.Networks
 

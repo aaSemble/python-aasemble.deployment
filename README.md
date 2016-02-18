@@ -1,6 +1,6 @@
 # aaSemble Deployment Engine
 
-![Travis status](https://travis-ci.org/aaSemble/python-aasemble.svg)
+![Travis status](https://travis-ci.org/aaSemble/python-aasemble.deployment.svg)
 
 This is the aaSemble Deployment Engine. It's a cloud centric deployment engine
 that aims to facilitate deployment for both ephemeral environments (for
