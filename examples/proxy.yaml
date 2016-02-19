@@ -6,13 +6,13 @@ nodes:
     export: true
     networks:
     - network: undercloud
-      securitygroups:
+      security_groups:
       - proxy
       assign_floating_ip: true
 networks:
   undercloud:
     cidr: 10.130.182.0/24
-securitygroups:
+security_groups:
   proxy:
   - cidr: 0.0.0.0/0
     from_port: 22

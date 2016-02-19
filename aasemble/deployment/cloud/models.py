@@ -1,8 +1,41 @@
+class NamedSet(dict):
+    def add(self, item):
+        self[item.name] = item
+
+    def __sub__(self, other):
+        diff_keys = set(self.keys()) - set(other.keys())
+        difference = self.__class__()
+        for key in diff_keys:
+            difference[key] = self[key]
+        return difference
+
+    def __eq__(self, other):
+        return set(self.values()) == other
+
+    def __iter__(self):
+        return iter(self.values())
+
+    def __contains__(self, item):
+        return item in self.values()
+
+
 class Collection(object):
     def __init__(self, nodes=None, security_groups=None, security_group_rules=None):
-        self.nodes = nodes or set()
-        self.security_groups = security_groups or set()
+        self.nodes = nodes or NamedSet()
+        self.security_groups = security_groups or NamedSet()
         self.security_group_rules = security_group_rules or set()
+
+    def __sub__(self, other):
+        diff = self.__class__()
+        diff.nodes = self.nodes - other.nodes
+        diff.security_groups = self.security_groups - other.security_groups
+        diff.security_group_rules = self.security_group_rules - other.security_group_rules
+        return diff
+
+    def connect(self):
+        for node in self.nodes:
+            for security_group_name in node.security_group_names:
+                node.security_groups.add(self.security_groups[security_group_name])
 
 
 class CloudModel(object):
@@ -17,13 +50,14 @@ class CloudModel(object):
 
 
 class Node(CloudModel):
-    def __init__(self, name, flavor, image, networks, disk, export, runner=None, keypair=None, userdata=None, attempts_left=1):
+    def __init__(self, name, flavor, image, networks, disk, export, security_groups=None, runner=None, keypair=None, userdata=None, attempts_left=1):
         self.name = name
         self.flavor = flavor
         self.image = image
         self.networks = networks
         self.disk = disk
         self.export = export
+        self.security_groups = security_groups or set()
         self.runner = runner
         self.keypair = keypair
         self.userdata = userdata
@@ -38,6 +72,12 @@ class Node(CloudModel):
 
     def __repr__(self):
         return "<Node name='%s'>" % (self.name,)
+
+    def __eq__(self, other):
+        return super(Node, self).__eq__(other) and (stringify(self.security_groups) == stringify(other.security_groups))
+
+    def __hash__(self):
+        return super(Node, self).__hash__() ^ hash(stringify(self.security_groups))
 
     @property
     def mapped_flavor(self):
@@ -105,3 +145,9 @@ class SecurityGroupRule(CloudModel):
                 (self.source_ip, self.from_port, self.to_port, self.protocol))
 
     id_attrs = ('security_group', 'source_ip', 'from_port', 'to_port', 'protocol')
+
+
+def stringify(security_groups):
+    l = list([sg.name for sg in security_groups])
+    l.sort()
+    return ' '.join(l)

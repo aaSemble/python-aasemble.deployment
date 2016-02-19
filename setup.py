@@ -29,5 +29,5 @@ setup(
     install_requires=requirements,
     tests_require=['mock', 'nose'],
     test_suite='nose.collector',
-    entry_points={'console_scripts': ['aasemble=aasemble.deployment.runner:main']}
+    entry_points={'console_scripts': ['aasemble=aasemble.deployment.cli:main']}
 )

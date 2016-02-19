@@ -43,7 +43,7 @@ class NodeTests(unittest.TestCase):
         self.record_resource = mock.MagicMock()
         cloud_driver = aasemble.deployment.runner.CloudDriver(record_resource=self.record_resource)
         self.dr = aasemble.deployment.runner.DeploymentRunner(cloud_driver=cloud_driver)
-        self.node = cloud_models.Node('name', None, None, [], None, False, self.dr)
+        self.node = cloud_models.Node('name', None, None, [], None, False, None, self.dr)
 
     @mock.patch('aasemble.deployment.runner.CloudDriver._get_nova_client')
     def test_poll(self, _get_nova_client):

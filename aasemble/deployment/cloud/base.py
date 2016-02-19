@@ -1,6 +1,7 @@
 class CloudDriver(object):
-    def __init__(self, record_resource):
+    def __init__(self, record_resource, mappings=None):
         self.record_resource = record_resource
+        self.mappings = mappings or {}
         self.secgroups = {}
 
     def create_floating_ip(name):
@@ -74,3 +75,6 @@ class CloudDriver(object):
 
     def clean_server(self, server):
         raise NotImplementedError()
+
+    def apply_mappings(self, obj_type, name):
+        return self.mappings.get(obj_type, {}).get(name, name)

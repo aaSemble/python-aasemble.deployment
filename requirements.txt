@@ -4,3 +4,4 @@ python-neutronclient
 python-cinderclient
 pyYAML
 apache-libcloud
+pycrypto
