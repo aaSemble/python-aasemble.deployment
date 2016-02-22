@@ -48,3 +48,23 @@ class ParserTestCase(unittest.TestCase):
                   ('aasemble.deployment.loader', 'INFO', 'Loaded node webapp2 from stack'),
                   ('aasemble.deployment.loader', 'INFO', 'Loaded security group webapp from stack'),
                   ('aasemble.deployment.loader', 'INFO', 'Loaded security group rule from stack: tcp: 443-443'))
+
+    @log_capture()
+    def test_with_script(self, log):
+        collection = loader.load(self._get_full_path_for_test_data('with_script.yaml'))
+        sg = cloud_models.SecurityGroup(name='webapp')
+
+        script = '#!/bin/sh\nadduser --system web\napt-get install python-virtualenv\netc. etc. etc.\n'
+
+        self.assertIn(cloud_models.Node(name='webapp1', flavor='webapp', image='trusty', disk=10, export=True, networks=[], security_groups=set([sg]), script=script), collection.nodes)
+        self.assertIn(cloud_models.Node(name='webapp2', flavor='webapp', image='trusty', disk=10, export=True, networks=[], security_groups=set([sg]), script=script), collection.nodes)
+
+        self.assertIn(sg, collection.security_groups)
+        self.assertIn(cloud_models.SecurityGroupRule(security_group=sg, source_ip='0.0.0.0/0', from_port=443, to_port=443, protocol='tcp'), collection.security_group_rules)
+        self.assertEquals(len(collection.nodes), 2)
+        self.assertEquals(len(collection.security_groups), 1)
+        self.assertEquals(len(collection.security_group_rules), 1)
+        log.check(('aasemble.deployment.loader', 'INFO', 'Loaded node webapp1 from stack'),
+                  ('aasemble.deployment.loader', 'INFO', 'Loaded node webapp2 from stack'),
+                  ('aasemble.deployment.loader', 'INFO', 'Loaded security group webapp from stack'),
+                  ('aasemble.deployment.loader', 'INFO', 'Loaded security group rule from stack: tcp: 443-443'))

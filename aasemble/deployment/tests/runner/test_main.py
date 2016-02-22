@@ -557,7 +557,7 @@ class MainTests(unittest.TestCase):
                                   {'network': 'passedthrough'}],
                                  10,
                                  False,
-                                 userdata='foo',
+                                 script='foo',
                                  keypair='key_x123',
                                  runner=self.dr)
 

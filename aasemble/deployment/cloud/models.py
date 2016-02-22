@@ -50,7 +50,7 @@ class CloudModel(object):
 
 
 class Node(CloudModel):
-    def __init__(self, name, flavor, image, networks, disk, export, security_groups=None, runner=None, keypair=None, userdata=None, attempts_left=1):
+    def __init__(self, name, flavor, image, networks, disk, export, security_groups=None, runner=None, keypair=None, script=None, attempts_left=1):
         self.name = name
         self.flavor = flavor
         self.image = image
@@ -60,7 +60,7 @@ class Node(CloudModel):
         self.security_groups = security_groups or set()
         self.runner = runner
         self.keypair = keypair
-        self.userdata = userdata
+        self.script = script
         self.attempts_left = attempts_left
 
         self.server_id = None
@@ -68,7 +68,7 @@ class Node(CloudModel):
         self.ports = []
         self.server_status = None
 
-    id_attrs = ('name', 'flavor', 'image', 'disk', 'export')
+    id_attrs = ('name', 'flavor', 'image', 'disk', 'export', 'script')
 
     def __repr__(self):
         return "<Node name='%s'>" % (self.name,)

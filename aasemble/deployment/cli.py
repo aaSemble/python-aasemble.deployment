@@ -1,7 +1,8 @@
 import argparse
 import logging
-from multiprocessing.pool import ThreadPool
 import sys
+
+from multiprocessing.pool import ThreadPool
 
 from aasemble.deployment import loader
 from aasemble.deployment.cloudconfigparser import load_cloud_config

@@ -428,7 +428,7 @@ class DeploymentRunner(object):
                                             node_info.get('export', False),
                                             runner=self,
                                             keypair=keypair_name,
-                                            userdata=userdata)
+                                            script=userdata)
         self.nodes[base_name].build()
         return base_name
 

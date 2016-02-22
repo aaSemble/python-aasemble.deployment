@@ -10,9 +10,11 @@ from testfixtures import log_capture
 import aasemble.deployment.cloud.gce as gce
 import aasemble.deployment.cloud.models as cloud_models
 
+
 class FakeThreadPool(object):
     def map(self, func, iterable):
         return list(map(func, iterable))
+
 
 class GCEDriverTestCase(unittest.TestCase):
     def setUp(self):
@@ -139,6 +141,14 @@ class GCEDriverTestCase(unittest.TestCase):
                                                networks=[],
                                                export=True,
                                                security_groups=set([webappsg])))
+        collection.nodes.add(cloud_models.Node(name='webapp2',
+                                               image='trusty',
+                                               flavor='n1-standard-2',
+                                               disk=37,
+                                               networks=[],
+                                               export=True,
+                                               security_groups=set([webappsg]),
+                                               script='#!/bin/bash\necho hello\n'))
         collection.security_groups.add(webappsg)
         collection.security_group_rules.add(cloud_models.SecurityGroupRule(security_group=webappsg,
                                                                            source_ip='0.0.0.0/0',
@@ -151,11 +161,18 @@ class GCEDriverTestCase(unittest.TestCase):
                                                                            to_port=8080,
                                                                            protocol='tcp'))
         self.cloud_driver.apply_resources(collection)
-        connection.create_node.assert_called_with(name='webapp',
-                                                  size='n1-standard-2',
-                                                  image=None,
-                                                  ex_disks_gce_struct=_disk_struct.return_value,
-                                                  ex_tags=['webapp'])
+        connection.create_node.assert_any_call(name='webapp',
+                                               size='n1-standard-2',
+                                               image=None,
+                                               ex_disks_gce_struct=_disk_struct.return_value,
+                                               ex_tags=['webapp'])
+        connection.create_node.assert_any_call(name='webapp2',
+                                               size='n1-standard-2',
+                                               image=None,
+                                               ex_disks_gce_struct=_disk_struct.return_value,
+                                               ex_tags=['webapp'],
+                                               ex_metadata={'items': [{'key': 'startup-script',
+                                                                       'value': '#!/bin/bash\necho hello\n'}]})
 
         connection.ex_create_firewall.assert_any_call(name='webapp-tcp-443-443',
                                                       allowed=[{'IPProtocol': 'tcp',

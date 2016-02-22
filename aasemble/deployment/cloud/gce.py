@@ -139,11 +139,18 @@ class GCEDriver(CloudDriver):
 
     def create_node(self, node):
         LOG.info('Launching node: %s' % (node.name))
-        self.connection.create_node(name=node.name,
-                                    size=self.apply_mappings('flavors', node.flavor),
-                                    image=None,
-                                    ex_disks_gce_struct=self._disk_struct(node),
-                                    ex_tags=[sg.name for sg in node.security_groups])
+
+        kwargs = {'name': node.name,
+                  'size': self.apply_mappings('flavors', node.flavor),
+                  'image': None,
+                  'ex_disks_gce_struct': self._disk_struct(node),
+                  'ex_tags': [sg.name for sg in node.security_groups]}
+
+        if node.script is not None:
+            kwargs['ex_metadata'] = {'items': [{'key': 'startup-script',
+                                                'value': node.script}]}
+        self.connection.create_node(**kwargs)
+
         LOG.info('Launced node: %s' % (node.name))
 
     def create_security_group_rule(self, security_group_rule):

@@ -204,7 +204,7 @@ class OpenStackDriver(CloudDriver):
         server_info = self._create_server(name=server.name, image=None,
                                           block_device_mapping=bdm,
                                           flavor=server.flavor_obj, nics=nics,
-                                          key_name=server.keypair, userdata=server.userdata)
+                                          key_name=server.keypair, userdata=server.script)
         server.server_id = server_info.id
         server.attempts_left -= 1
 
