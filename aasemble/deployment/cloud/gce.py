@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 
 from libcloud.compute.providers import get_driver
 from libcloud.compute.types import Provider
@@ -17,7 +18,7 @@ class GCEDriver(CloudDriver):
         self.gce_key_file = kwargs.pop('gce_key_file')
         self.location = kwargs.pop('location')
         super(GCEDriver, self).__init__(*args, **kwargs)
-        self._connection = None
+        self.locals = threading.local()
 
     @classmethod
     def get_kwargs_from_cloud_config(cls, cfgparser):
@@ -26,13 +27,13 @@ class GCEDriver(CloudDriver):
 
     @property
     def connection(self):
-        if self._connection is None:
+        if not hasattr(self.locals, '_connection'):
             driver = get_driver(self.provider)
             driver_args, driver_kwargs = self._get_driver_args_and_kwargs()
             LOG.info('Connecting to Google Compute Engine')
-            self._connection = driver(*driver_args, **driver_kwargs)
+            self.locals._connection = driver(*driver_args, **driver_kwargs)
 
-        return self._connection
+        return self.locals._connection
 
     def _get_driver_args_and_kwargs(self):
         with open(self.gce_key_file, 'r') as fp:
@@ -136,25 +137,31 @@ class GCEDriver(CloudDriver):
         else:
             return 0, 65535
 
-    def apply_resources(self, collection):
-        for node in collection.nodes:
-            LOG.info('Launching node: %s' % (node.name))
-            self.connection.create_node(name=node.name,
-                                        size=self.apply_mappings('flavors', node.flavor),
-                                        image=None,
-                                        ex_disks_gce_struct=self._disk_struct(node))
+    def create_node(self, node):
+        LOG.info('Launching node: %s' % (node.name))
+        self.connection.create_node(name=node.name,
+                                    size=self.apply_mappings('flavors', node.flavor),
+                                    image=None,
+                                    ex_disks_gce_struct=self._disk_struct(node),
+                                    ex_tags=[sg.name for sg in node.security_groups])
+        LOG.info('Launced node: %s' % (node.name))
 
-        for security_group_rule in collection.security_group_rules:
-            name = '%s-%s-%s-%s' % (security_group_rule.security_group.name,
-                                    security_group_rule.protocol,
-                                    security_group_rule.from_port,
-                                    security_group_rule.to_port)
-            LOG.info('Creating firewall rule: %s' % (name))
-            self.connection.ex_create_firewall(name=name,
-                                               allowed=[{'IPProtocol': security_group_rule.protocol,
-                                                         'ports': [self._format_ports(security_group_rule)]}],
-                                               source_ranges=self._source_ranges(security_group_rule),
-                                               target_tags=[security_group_rule.security_group.name])
+    def create_security_group_rule(self, security_group_rule):
+        name = '%s-%s-%s-%s' % (security_group_rule.security_group.name,
+                                security_group_rule.protocol,
+                                security_group_rule.from_port,
+                                security_group_rule.to_port)
+        LOG.info('Creating firewall rule: %s' % (name))
+        self.connection.ex_create_firewall(name=name,
+                                           allowed=[{'IPProtocol': security_group_rule.protocol,
+                                                     'ports': [self._format_ports(security_group_rule)]}],
+                                           source_ranges=self._source_ranges(security_group_rule),
+                                           target_tags=[security_group_rule.security_group.name])
+
+    def apply_resources(self, collection):
+        self.pool.map(self.create_node, collection.nodes)
+
+        self.pool.map(self.create_security_group_rule, collection.security_group_rules)
 
     def _disk_struct(self, node):
         return [{'boot': True,

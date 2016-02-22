@@ -1,5 +1,6 @@
 import argparse
 import logging
+from multiprocessing.pool import ThreadPool
 import sys
 
 from aasemble.deployment import loader
@@ -11,8 +12,10 @@ def deploy(options):
     resources = loader.load(options.stack)
     cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(options.cloud)
     resource_recorder = FakeResourceRecorder()
+    pool = ThreadPool()
     cloud_driver = cloud_driver_class(record_resource=resource_recorder.record,
                                       mappings=mappings,
+                                      pool=pool,
                                       **cloud_driver_kwargs)
 
     if not options.assume_empty:

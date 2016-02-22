@@ -1,7 +1,8 @@
 class CloudDriver(object):
-    def __init__(self, record_resource, mappings=None):
+    def __init__(self, record_resource, mappings=None, pool=None):
         self.record_resource = record_resource
         self.mappings = mappings or {}
+        self.pool = pool
         self.secgroups = {}
 
     def create_floating_ip(name):

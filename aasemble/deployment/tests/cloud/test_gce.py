@@ -10,6 +10,9 @@ from testfixtures import log_capture
 import aasemble.deployment.cloud.gce as gce
 import aasemble.deployment.cloud.models as cloud_models
 
+class FakeThreadPool(object):
+    def map(self, func, iterable):
+        return list(map(func, iterable))
 
 class GCEDriverTestCase(unittest.TestCase):
     def setUp(self):
@@ -18,7 +21,8 @@ class GCEDriverTestCase(unittest.TestCase):
         self.gce_key_file = os.path.join(os.path.dirname(__file__), 'test_key.json')
         self.cloud_driver = gce.GCEDriver(gce_key_file=self.gce_key_file,
                                           location='location1',
-                                          record_resource=self.record_resource)
+                                          record_resource=self.record_resource,
+                                          pool=FakeThreadPool())
 
     @mock.patch('aasemble.deployment.cloud.gce.get_driver')
     @log_capture()
@@ -127,13 +131,14 @@ class GCEDriverTestCase(unittest.TestCase):
     @mock.patch('aasemble.deployment.cloud.gce.GCEDriver._disk_struct')
     def test_apply_resources(self, _disk_struct, connection):
         collection = cloud_models.Collection()
+        webappsg = cloud_models.SecurityGroup(name='webapp')
         collection.nodes.add(cloud_models.Node(name='webapp',
                                                image='trusty',
                                                flavor='n1-standard-2',
                                                disk=37,
                                                networks=[],
-                                               export=True))
-        webappsg = cloud_models.SecurityGroup(name='webapp')
+                                               export=True,
+                                               security_groups=set([webappsg])))
         collection.security_groups.add(webappsg)
         collection.security_group_rules.add(cloud_models.SecurityGroupRule(security_group=webappsg,
                                                                            source_ip='0.0.0.0/0',
@@ -149,7 +154,8 @@ class GCEDriverTestCase(unittest.TestCase):
         connection.create_node.assert_called_with(name='webapp',
                                                   size='n1-standard-2',
                                                   image=None,
-                                                  ex_disks_gce_struct=_disk_struct.return_value)
+                                                  ex_disks_gce_struct=_disk_struct.return_value,
+                                                  ex_tags=['webapp'])
 
         connection.ex_create_firewall.assert_any_call(name='webapp-tcp-443-443',
                                                       allowed=[{'IPProtocol': 'tcp',
