@@ -9,7 +9,7 @@ from aasemble.deployment.cloudconfigparser import load_cloud_config
 from aasemble.deployment.runner import FakeResourceRecorder
 
 
-def deploy(options):
+def apply(options):
     resources = loader.load(options.stack)
     cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(options.cloud)
     resource_recorder = FakeResourceRecorder()
@@ -42,11 +42,11 @@ def main(args=sys.argv[1:]):
 
     subparsers = parser.add_subparsers(help='Subcommand help', dest='subcmd')
     subparsers.required = True
-    deploy_parser = subparsers.add_parser('apply', help='Apply (launch/update) stack')
-    deploy_parser.set_defaults(func=deploy)
-    deploy_parser.add_argument('--assume-empty', action='store_true', help='Ignore current resources')
-    deploy_parser.add_argument('stack', help='Stack description (yaml format)')
-    deploy_parser.add_argument('cloud', help='Cloud config')
+    apply_parser = subparsers.add_parser('apply', help='Apply (launch/update) stack')
+    apply_parser.set_defaults(func=apply)
+    apply_parser.add_argument('--assume-empty', action='store_true', help='Ignore current resources')
+    apply_parser.add_argument('stack', help='Stack description (yaml format)')
+    apply_parser.add_argument('cloud', help='Cloud config')
 
     detect_parser = subparsers.add_parser('detect', help='Detect current resources')
     detect_parser.set_defaults(func=detect)
