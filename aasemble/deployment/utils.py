@@ -13,8 +13,22 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 import re
+import yaml
 
 from aasemble.deployment import exceptions
+
+
+class FakeResourceRecorder(object):
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def record(self, *args, **kwargs):
+        pass
+
+
+def load_yaml(f='.aasemble.yaml'):
+    with open(f, 'r') as fp:
+        return list(yaml.safe_load_all(fp))
 
 
 def parse_time(time_string):

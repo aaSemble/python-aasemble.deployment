@@ -6,7 +6,7 @@ from multiprocessing.pool import ThreadPool
 
 from aasemble.deployment import loader
 from aasemble.deployment.cloudconfigparser import load_cloud_config
-from aasemble.deployment.runner import FakeResourceRecorder
+from aasemble.deployment.utils import FakeResourceRecorder
 
 
 def apply(options):
@@ -45,12 +45,14 @@ def main(args=sys.argv[1:]):
     apply_parser = subparsers.add_parser('apply', help='Apply (launch/update) stack')
     apply_parser.set_defaults(func=apply)
     apply_parser.add_argument('--assume-empty', action='store_true', help='Ignore current resources')
+    apply_parser.add_argument('--prefix', help='Prefix for all resource names')
     apply_parser.add_argument('stack', help='Stack description (yaml format)')
     apply_parser.add_argument('cloud', help='Cloud config')
 
     detect_parser = subparsers.add_parser('detect', help='Detect current resources')
     detect_parser.set_defaults(func=detect)
     detect_parser.add_argument('cloud', help='Cloud config')
+    detect_parser.add_argument('--prefix', help='Prefix for all resource names')
 
     options = parser.parse_args(args)
     options.func(options)

@@ -1,13 +1,13 @@
 import logging
 
 import aasemble.deployment.cloud.models as cloud_models
-from aasemble.deployment.runner import load_yaml
+from aasemble.deployment.utils import load_yaml
 
 LOG = logging.getLogger(__name__)
 
 
 def load(fpath):
-    data = load_yaml(fpath)
+    data = load_yaml(fpath)[0]
     collection = cloud_models.Collection()
 
     for node in build_nodes(data):
