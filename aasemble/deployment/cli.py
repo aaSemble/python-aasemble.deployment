@@ -40,7 +40,8 @@ def main(args=sys.argv[1:]):
 
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)-15s %(message)s')
 
-    subparsers = parser.add_subparsers(help='Subcommand help')
+    subparsers = parser.add_subparsers(help='Subcommand help', dest='subcmd')
+    subparsers.required = True
     deploy_parser = subparsers.add_parser('apply', help='Apply (launch/update) stack')
     deploy_parser.set_defaults(func=deploy)
     deploy_parser.add_argument('--assume-empty', action='store_true', help='Ignore current resources')
