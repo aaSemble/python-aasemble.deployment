@@ -95,54 +95,16 @@ class Node(CloudModel):
     def __hash__(self):
         return super(Node, self).__hash__() ^ hash(stringify(self.security_groups))
 
-    @property
-    def mapped_flavor(self):
-        if self.runner is None:
-            return self.flavor
-        return self.runner.mappings.get('flavors', {}).get(self.flavor, self.flavor)
-
-    @property
-    def mapped_image(self):
-        if self.runner is None:
-            return self.image
-        return self.runner.mappings.get('images', {}).get(self.image, self.image)
-
-    def poll(self, desired_status='ACTIVE'):
-        return self.runner.cloud_driver.poll_server(self, desired_status)
-
-    def clean(self):
-        return self.runner.cloud_driver.clean_server(self)
-
-    def build(self):
-        return self.runner.cloud_driver.build_server(self)
-
-    @property
-    def floating_ip(self):
-        for port in self.ports:
-            if 'floating_ip' in port:
-                return port['floating_ip']
-
 
 class Network(object):
     pass
-
-
-class FloatingIP(CloudModel):
-    def __init__(self, id, ip_address):
-        self.id = id
-        self.ip_address = ip_address
-
-    def __repr__(self):
-        return "<FloatingIP id='%s' ip_address='%s'>" % (self.id, self.ip_address)
-
-    id_attrs = ('id', 'ip_address')
 
 
 class SecurityGroup(CloudModel):
     def __init__(self, name):
         self.name = name
 
-    def __repr__(self):
+    def __repr__(self):  # pragma: no cover
         return "<SecurityGroup name='%s'>" % (self.name,)
 
     id_attrs = ('name',)
@@ -156,7 +118,7 @@ class SecurityGroupRule(CloudModel):
         self.to_port = to_port
         self.protocol = protocol
 
-    def __repr__(self):
+    def __repr__(self):  # pragma: no cover
         return ("<SecurityGroupRule source_ip='%s', from_port=%d, to_port=%d, protocol='%s'>" %
                 (self.source_ip, self.from_port, self.to_port, self.protocol))
 

@@ -9,9 +9,6 @@ class NamedItem(object):
     def __init__(self, name):
         self.name = name
 
-    def __repr__(self):
-        return self.name
-
 
 class NamedSetTests(unittest.TestCase):
     def test_new_is_empty(self):

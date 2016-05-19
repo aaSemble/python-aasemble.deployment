@@ -19,7 +19,7 @@ import yaml
 from aasemble.deployment import exceptions
 
 
-class FakeResourceRecorder(object):
+class FakeResourceRecorder(object):  # pragma: no cover
     def __init__(self, *args, **kwargs):
         pass
 
