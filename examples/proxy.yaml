@@ -3,7 +3,6 @@ nodes:
     flavor: proxy
     image: trusty
     disk: 10
-    export: true
     networks:
     - network: undercloud
       security_groups:

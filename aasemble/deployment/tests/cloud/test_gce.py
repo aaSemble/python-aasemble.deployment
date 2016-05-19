@@ -81,7 +81,6 @@ class GCEDriverTestCase(unittest.TestCase):
                                         image='ubuntu-1404-trusty-v20151113',
                                         flavor='n1-standard-2',
                                         disk=20,
-                                        export=True,
                                         networks=[],
                                         security_groups=set([collection.security_groups['webapp']])),
                       collection.nodes)
@@ -139,14 +138,12 @@ class GCEDriverTestCase(unittest.TestCase):
                                                flavor='n1-standard-2',
                                                disk=37,
                                                networks=[],
-                                               export=True,
                                                security_groups=set([webappsg])))
         collection.nodes.add(cloud_models.Node(name='webapp2',
                                                image='trusty',
                                                flavor='n1-standard-2',
                                                disk=37,
                                                networks=[],
-                                               export=True,
                                                security_groups=set([webappsg]),
                                                script='#!/bin/bash\necho hello\n'))
         collection.security_groups.add(webappsg)
@@ -194,8 +191,7 @@ class GCEDriverTestCase(unittest.TestCase):
                                  image='trusty',
                                  flavor='n1-standard-2',
                                  disk=37,
-                                 networks=[],
-                                 export=True)
+                                 networks=[])
 
         apply_mappings.return_value = 'mappedtrusty'
         _get_disk_type.return_value = 'http://disktypelink'

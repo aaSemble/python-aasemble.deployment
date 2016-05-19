@@ -40,7 +40,6 @@ def build_nodes(data):
                                      flavor=node_info['flavor'],
                                      image=node_info['image'],
                                      disk=node_info['disk'],
-                                     export=node_info['export'],
                                      networks=node_info.get('networks', []),
                                      script=node_info.get('script', None))
             node.security_group_names = node_info.get('security_groups', [])

@@ -72,7 +72,6 @@ class GCEDriver(CloudDriver):
                                      flavor=gcenode.size,
                                      image=gcenode.image,
                                      disk=volume_sizes[gcenode.extra['disks'][0]['source']],
-                                     export=True,
                                      networks=[])
             node.security_group_names = set(gcenode.extra['tags'])
             nodes.add(node)

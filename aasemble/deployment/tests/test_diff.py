@@ -21,7 +21,6 @@ class DiffTestCase(unittest.TestCase):
                                        flavor='image',
                                        networks=[],
                                        disk=10,
-                                       export=True,
                                        security_groups=set([self.sg1]))
         self.current = cloud_models.Collection()
         self.desired = cloud_models.Collection()
