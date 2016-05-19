@@ -2,6 +2,17 @@ class NamedSet(dict):
     def add(self, item):
         self[item.name] = item
 
+    def remove(self, item=None, name=None):
+        if item is not None:
+            del self[item.name]
+            return
+
+        if name is not None:
+            del self[name]
+            return
+
+        raise TypeError('Must pass either item or name')
+
     def __sub__(self, other):
         diff_keys = set(self.keys()) - set(other.keys())
         difference = self.__class__()
@@ -31,6 +42,11 @@ class Collection(object):
         diff.security_groups = self.security_groups - other.security_groups
         diff.security_group_rules = self.security_group_rules - other.security_group_rules
         return diff
+
+    def __eq__(self, other):
+        return (self.nodes == other.nodes and
+                self.security_groups == other.security_groups and
+                self.security_group_rules == other.security_group_rules)
 
     def connect(self):
         for node in self.nodes:
@@ -71,7 +87,7 @@ class Node(CloudModel):
     id_attrs = ('name', 'flavor', 'image', 'disk', 'export', 'script')
 
     def __repr__(self):
-        return "<Node name='%s'>" % (self.name,)
+        return "<Node name='%s'>" % (self.name,)  # pragma: no cover
 
     def __eq__(self, other):
         return super(Node, self).__eq__(other) and (stringify(self.security_groups) == stringify(other.security_groups))

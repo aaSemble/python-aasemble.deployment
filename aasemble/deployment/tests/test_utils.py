@@ -15,9 +15,6 @@
 import datetime
 import os.path
 import unittest
-import yaml
-
-import mock
 
 from aasemble.deployment import exceptions, utils
 

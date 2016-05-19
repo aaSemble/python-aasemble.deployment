@@ -13,7 +13,7 @@ def apply(options):
     resources = loader.load(options.stack)
     cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(options.cloud)
     resource_recorder = FakeResourceRecorder()
-    pool = ThreadPool()
+    pool = ThreadPool(1)
     cloud_driver = cloud_driver_class(record_resource=resource_recorder.record,
                                       mappings=mappings,
                                       pool=pool,
@@ -59,4 +59,4 @@ def main(args=sys.argv[1:]):
 
 
 if __name__ == '__main__':
-    main()
+    main()  # pragma: no cover
