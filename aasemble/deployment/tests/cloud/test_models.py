@@ -16,7 +16,7 @@ class NamedItem(object):
 class NamedSetTests(unittest.TestCase):
     def test_new_is_empty(self):
         s = models.NamedSet()
-        self.assertEquals(list(s), [])
+        self.assertEqual(list(s), [])
 
     def test_add(self):
         s = models.NamedSet()
@@ -81,7 +81,7 @@ class NamedSetTests(unittest.TestCase):
         s1.add(item2)
         s2.add(item2)
 
-        self.assertEquals(s1, s2)
+        self.assertEqual(s1, s2)
 
     def test_not_eq(self):
         s1 = models.NamedSet()
@@ -106,23 +106,23 @@ class NamedSetTests(unittest.TestCase):
         for x in s:
             s_.remove(x)
 
-        self.assertEquals(s_, set())
+        self.assertEqual(s_, set())
 
 
 class CollectionTests(unittest.TestCase):
     def test_init(self):
         c = models.Collection()
-        self.assertEquals(models.NamedSet(), c.nodes)
-        self.assertEquals(models.NamedSet(), c.security_groups)
-        self.assertEquals(models.NamedSet(), c.security_group_rules)
+        self.assertEqual(models.NamedSet(), c.nodes)
+        self.assertEqual(models.NamedSet(), c.security_groups)
+        self.assertEqual(models.NamedSet(), c.security_group_rules)
 
     def test_init_with_args(self):
         c = models.Collection(nodes=mock.sentinel.nodes,
                               security_groups=mock.sentinel.security_groups,
                               security_group_rules=mock.sentinel.security_group_rules)
-        self.assertEquals(mock.sentinel.nodes, c.nodes)
-        self.assertEquals(mock.sentinel.security_groups, c.security_groups)
-        self.assertEquals(mock.sentinel.security_group_rules, c.security_group_rules)
+        self.assertEqual(mock.sentinel.nodes, c.nodes)
+        self.assertEqual(mock.sentinel.security_groups, c.security_groups)
+        self.assertEqual(mock.sentinel.security_group_rules, c.security_group_rules)
 
     def test_sub(self):
         c1 = models.Collection()
@@ -163,7 +163,7 @@ class CollectionTests(unittest.TestCase):
         c_expected.security_group_rules.add(sgr2)
         c_expected.security_group_rules.add(sgr3)
 
-        self.assertEquals(c_expected, c_diff)
+        self.assertEqual(c_expected, c_diff)
 
     def test_connect(self):
         c = models.Collection()
@@ -197,7 +197,7 @@ class CloudModelTests(unittest.TestCase):
     def test_eq(self):
         tc1 = self.TestClass(mock.sentinel.attr1, mock.sentinel.attr2, mock.sentinel.attr3)
         tc2 = self.TestClass(mock.sentinel.attr1, mock.sentinel.attr2, mock.sentinel.not_attr3)
-        self.assertEquals(tc1, tc2)
+        self.assertEqual(tc1, tc2)
 
     def test_not_eq(self):
         tc1 = self.TestClass(mock.sentinel.attr1, mock.sentinel.attr2, mock.sentinel.attr3)

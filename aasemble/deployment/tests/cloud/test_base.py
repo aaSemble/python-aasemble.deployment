@@ -12,8 +12,8 @@ class CloudDriverTests(unittest.TestCase):
         self.driver = base.CloudDriver(self.record_resource)
 
     def test_init(self):
-        self.assertEquals(self.driver.record_resource,
-                          self.record_resource)
+        self.assertEqual(self.driver.record_resource,
+                         self.record_resource)
 
     def test_detect_resources(self):
         self.assertRaises(NotImplementedError,

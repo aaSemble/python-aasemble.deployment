@@ -38,9 +38,9 @@ class DiffTestCase(unittest.TestCase):
 
         difference = self.desired - self.current
 
-        self.assertEquals(difference.nodes, set())
-        self.assertEquals(difference.security_groups, set())
-        self.assertEquals(difference.security_group_rules, set())
+        self.assertEqual(difference.nodes, set())
+        self.assertEqual(difference.security_groups, set())
+        self.assertEqual(difference.security_group_rules, set())
 
     def test_node_missing(self):
         self.current.security_groups.add(self.sg1)
@@ -53,9 +53,9 @@ class DiffTestCase(unittest.TestCase):
 
         difference = self.desired - self.current
 
-        self.assertEquals(difference.nodes, set([self.node1]))
-        self.assertEquals(difference.security_groups, set())
-        self.assertEquals(difference.security_group_rules, set())
+        self.assertEqual(difference.nodes, set([self.node1]))
+        self.assertEqual(difference.security_groups, set())
+        self.assertEqual(difference.security_group_rules, set())
 
     def test_security_group_rule_missing(self):
         self.current.nodes.add(self.node1)
@@ -68,6 +68,6 @@ class DiffTestCase(unittest.TestCase):
 
         difference = self.desired - self.current
 
-        self.assertEquals(difference.nodes, set())
-        self.assertEquals(difference.security_groups, set())
-        self.assertEquals(difference.security_group_rules, set([self.sgr2]))
+        self.assertEqual(difference.nodes, set())
+        self.assertEqual(difference.security_groups, set())
+        self.assertEqual(difference.security_group_rules, set([self.sgr2]))

@@ -29,7 +29,7 @@ class GCEDriverTestCase(unittest.TestCase):
     @mock.patch('aasemble.deployment.cloud.gce.get_driver')
     @log_capture()
     def test_connection(self, get_driver, log):
-        self.assertEquals(self.cloud_driver.connection, get_driver.return_value.return_value)
+        self.assertEqual(self.cloud_driver.connection, get_driver.return_value.return_value)
         get_driver.assert_called_with(Provider.GCE)
         get_driver(Provider.GCE).assert_called_with('foobar@a-project-id.iam.gserviceaccount.com',
                                                     self.gce_key_file,
@@ -112,9 +112,9 @@ class GCEDriverTestCase(unittest.TestCase):
                                                      from_port=443,
                                                      to_port=443,
                                                      protocol='tcp'), collection.security_group_rules)
-        self.assertEquals(len(collection.nodes), 1)
-        self.assertEquals(len(collection.security_groups), 3)
-        self.assertEquals(len(collection.security_group_rules), 4)
+        self.assertEqual(len(collection.nodes), 1)
+        self.assertEqual(len(collection.security_groups), 3)
+        self.assertEqual(len(collection.security_group_rules), 4)
 
         log_records = list(log.actual())
         self.assertIn(('aasemble.deployment.cloud.gce', 'INFO', 'Detecting nodes'), log_records)
@@ -127,7 +127,7 @@ class GCEDriverTestCase(unittest.TestCase):
         self.assertIn(('aasemble.deployment.cloud.gce', 'INFO', 'Detected security group rule for security group global: tcp: 8000-8080'), log_records)
         self.assertIn(('aasemble.deployment.cloud.gce', 'INFO', 'Detected security group rule for security group dev: tcp: 443-443'), log_records)
         self.assertIn(('aasemble.deployment.cloud.gce', 'INFO', 'Detected security group rule for security group webapp: tcp: 443-443'), log_records)
-        self.assertEquals(len(log_records), 10, log_records)
+        self.assertEqual(len(log_records), 10, log_records)
 
     @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
     @mock.patch('aasemble.deployment.cloud.gce.GCEDriver._disk_struct')
@@ -200,13 +200,12 @@ class GCEDriverTestCase(unittest.TestCase):
         apply_mappings.return_value = 'mappedtrusty'
         _get_disk_type.return_value = 'http://disktypelink'
         _resolve_image_name.return_value = 'http://mappedtrusty'
-        self.assertEquals(self.cloud_driver._disk_struct(node), [{'boot': True,
-                                                                  'autoDelete': True,
-                                                                  'initializeParams': {
-                                                                      'sourceImage': 'http://mappedtrusty',
-                                                                      'diskType': 'http://disktypelink',
-                                                                      'diskSizeGb': 37}
-                                                                  }])
+        self.assertEqual(self.cloud_driver._disk_struct(node), [{'boot': True,
+                                                                 'autoDelete': True,
+                                                                 'initializeParams': {
+                                                                     'sourceImage': 'http://mappedtrusty',
+                                                                     'diskType': 'http://disktypelink',
+                                                                     'diskSizeGb': 37}}])
         _resolve_image_name.assert_called_with('mappedtrusty')
         apply_mappings.assert_called_with('images', 'trusty')
 
@@ -224,17 +223,17 @@ class GCEDriverTestCase(unittest.TestCase):
         img2.extra = {'selfLink': 'http://somelink2'}
         connection.list_images.return_value = [img1, img2]
 
-        self.assertEquals(self.cloud_driver._resolve_image_name('ubuntu-14-04-12345667v'),
-                          'http://somelink1')
+        self.assertEqual(self.cloud_driver._resolve_image_name('ubuntu-14-04-12345667v'),
+                         'http://somelink1')
 
     def test_parse_port_spec_single_port(self):
-        self.assertEquals(self.cloud_driver._parse_port_spec({'ports': ['443']}), (443, 443))
+        self.assertEqual(self.cloud_driver._parse_port_spec({'ports': ['443']}), (443, 443))
 
     def test_parse_port_spec_port_range(self):
-        self.assertEquals(self.cloud_driver._parse_port_spec({'ports': ['8000-8080']}), (8000, 8080))
+        self.assertEqual(self.cloud_driver._parse_port_spec({'ports': ['8000-8080']}), (8000, 8080))
 
     def test_parse_port_spec_no_ports(self):
-        self.assertEquals(self.cloud_driver._parse_port_spec({}), (0, 65535))
+        self.assertEqual(self.cloud_driver._parse_port_spec({}), (0, 65535))
 
     @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
     def test_get_disk_type(self, connection):
@@ -249,5 +248,5 @@ class GCEDriverTestCase(unittest.TestCase):
         hdd.extra = {'selfLink': 'http://hddlink'}
         connection.ex_list_disktypes.return_value = [ssd, hdd]
 
-        self.assertEquals(self.cloud_driver._get_disk_type('pd-hdd'),
-                          'http://hddlink')
+        self.assertEqual(self.cloud_driver._get_disk_type('pd-hdd'),
+                         'http://hddlink')
