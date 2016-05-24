@@ -22,3 +22,7 @@ class CloudDriverTests(unittest.TestCase):
     def test_apply_resources(self):
         self.assertRaises(NotImplementedError,
                           self.driver.apply_resources)
+
+    def test_clean_resources(self):
+        self.assertRaises(NotImplementedError,
+                          self.driver.clean_resources)

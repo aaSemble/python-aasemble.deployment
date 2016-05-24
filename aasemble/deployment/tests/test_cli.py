@@ -3,6 +3,7 @@ import unittest
 import mock
 
 import aasemble.deployment.cli
+import aasemble.deployment.cloud.base
 
 
 class CliTestCase(unittest.TestCase):
@@ -19,23 +20,26 @@ class CliTestCase(unittest.TestCase):
 
         resources = loader.load.return_value
 
-        load_cloud_config.return_value = (mock.MagicMock(name='cloud_driver_class'),
-                                          mock.MagicMock(name='cloud_driver_kwargs'),
-                                          mock.MagicMock(name='mappings'))
+        with mock.patch.multiple('aasemble.deployment.cloud.base.CloudDriver',
+                                 detect_resources=mock.DEFAULT,
+                                 apply_resources=mock.DEFAULT) as values:
+            detect_resources = values['detect_resources']
+            apply_resources = values['apply_resources']
 
-        cloud_driver = load_cloud_config.return_value[0]()
-        aasemble.deployment.cli.apply(options)
+            load_cloud_config.return_value = (aasemble.deployment.cloud.base.CloudDriver, {}, {})
+
+            aasemble.deployment.cli.apply(options)
 
         loader.load.assert_called_with(options.stack)
 
         if assume_empty:
-            cloud_driver.detect_resources.assert_not_called()
+            detect_resources.assert_not_called()
             expected_resources = resources
         else:
-            cloud_driver.detect_resources.assert_called_with()
-            expected_resources = resources - cloud_driver.detect_resources.return_value
+            detect_resources.assert_called_with()
+            expected_resources = resources - detect_resources.return_value
 
-        cloud_driver.apply_resources.assert_called_with(expected_resources)
+        apply_resources.assert_called_with(expected_resources)
 
     def test_apply_no_assume_empty(self):
         self._test_apply(False)
@@ -46,14 +50,26 @@ class CliTestCase(unittest.TestCase):
     @mock.patch('aasemble.deployment.cli.load_cloud_config')
     def test_detect(self, load_cloud_config):
         options = mock.MagicMock()
-        load_cloud_config.return_value = (mock.MagicMock(name='cloud_driver_class'),
-                                          mock.MagicMock(name='cloud_driver_kwargs'),
-                                          mock.MagicMock(name='mappings'))
-        cloud_driver = load_cloud_config.return_value[0]()
+        with mock.patch('aasemble.deployment.cloud.base.CloudDriver.detect_resources') as detect_resources:
+            load_cloud_config.return_value = (aasemble.deployment.cloud.base.CloudDriver, {}, {})
 
-        aasemble.deployment.cli.detect(options)
+            aasemble.deployment.cli.detect(options)
 
-        cloud_driver.detect_resources.assert_called_with()
+        detect_resources.assert_called_with()
+
+    @mock.patch('aasemble.deployment.cli.load_cloud_config')
+    def test_clean(self, load_cloud_config):
+        options = mock.MagicMock()
+        with mock.patch.multiple('aasemble.deployment.cloud.base.CloudDriver',
+                                 clean_resources=mock.DEFAULT,
+                                 detect_resources=mock.DEFAULT) as values:
+            values['detect_resources'].return_value = mock.sentinel.resources
+            load_cloud_config.return_value = (aasemble.deployment.cloud.base.CloudDriver, {}, {})
+
+            aasemble.deployment.cli.clean(options)
+
+        values['detect_resources'].assert_called_with()
+        values['clean_resources'].assert_called_with(mock.sentinel.resources)
 
     @mock.patch('aasemble.deployment.cli.detect')
     def test_main_calls_detect(self, detect):

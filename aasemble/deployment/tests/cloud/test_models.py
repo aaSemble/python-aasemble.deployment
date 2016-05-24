@@ -89,7 +89,7 @@ class NamedSetTests(unittest.TestCase):
         s1.add(item1)
         s2.add(item2)
 
-        self.assertNotEquals(s1, s2)
+        self.assertNotEqual(s1, s2)
 
     def test_iter(self):
         s = models.NamedSet()
@@ -165,7 +165,7 @@ class CollectionTests(unittest.TestCase):
     def test_connect(self):
         c = models.Collection()
 
-        n = models.Node('node1', 'flavor', 'image', [], 10, True)
+        n = models.Node(name='node1', flavor='flavor', image='image', networks=[], disk=10)
         n.security_group_names = ['securitygroup1', 'securitygroup2']
         sg1 = NamedItem('securitygroup1')
         sg2 = NamedItem('securitygroup2')
@@ -199,4 +199,4 @@ class CloudModelTests(unittest.TestCase):
     def test_not_eq(self):
         tc1 = self.TestClass(mock.sentinel.attr1, mock.sentinel.attr2, mock.sentinel.attr3)
         tc2 = self.TestClass(mock.sentinel.attr1, mock.sentinel.not_attr2, mock.sentinel.attr3)
-        self.assertNotEquals(tc1, tc2)
+        self.assertNotEqual(tc1, tc2)

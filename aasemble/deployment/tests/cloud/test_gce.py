@@ -1,9 +1,12 @@
 import os.path
 import unittest
+import unittest.util
 
 from libcloud.compute.types import Provider
 
 import mock
+
+from six.moves import configparser
 
 from testfixtures import log_capture
 
@@ -16,6 +19,19 @@ class FakeThreadPool(object):
         return list(map(func, iterable))
 
 
+class GCENode(object):
+    def __init__(self, name, size='n1-standard-1', image='ubuntu-1404-trusty-v20151113', tags=None, namespace=None):
+        self.name = name
+        self.size = size
+        self.image = image
+        self.extra = {'metadata': {},
+                      'disks': [{'source': 'http://link/to/disk/{}'.format(name)}],
+                      'tags': tags or []}
+
+        if namespace:
+            self.extra['metadata']['items'] = [{'key': 'aasemble_namespace', 'value': namespace}]
+
+
 class GCEDriverTestCase(unittest.TestCase):
     def setUp(self):
         super(GCEDriverTestCase, self).setUp()
@@ -25,6 +41,15 @@ class GCEDriverTestCase(unittest.TestCase):
                                           location='location1',
                                           record_resource=self.record_resource,
                                           pool=FakeThreadPool())
+
+    def test_get_kwargs_from_cloud_config(self):
+        cp = configparser.ConfigParser()
+        cp.add_section('connection')
+        cp.set('connection', 'key_file', 'somekey.json')
+        cp.set('connection', 'location', 'some.region')
+        self.assertEqual(gce.GCEDriver.get_kwargs_from_cloud_config(cp),
+                         {'gce_key_file': 'somekey.json',
+                          'location': 'some.region'})
 
     @mock.patch('aasemble.deployment.cloud.gce.get_driver')
     @log_capture()
@@ -37,100 +62,178 @@ class GCEDriverTestCase(unittest.TestCase):
                                                     datacenter='location1')
         log.check(('aasemble.deployment.cloud.gce', 'INFO', 'Connecting to Google Compute Engine'))
 
+    def test_get_driver_args_and_kwargs(self):
+        self.assertEqual(self.cloud_driver._get_driver_args_and_kwargs(),
+                         (('foobar@a-project-id.iam.gserviceaccount.com', self.gce_key_file),
+                          {'project': 'a-project-id', 'datacenter': 'location1'}))
+
     @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
-    @log_capture()
-    def test_detect_resources(self, connection, log):
-        class GCENode(mock.MagicMock):
-            pass
+    def test_volume_size_map(self, connection):
+        class GCEVolume(object):
+            def __init__(self, name, size):
+                self.extra = {'selfLink': 'http://link/to/{}'.format(name)}
+                self.size = size
 
-        class GCEVolume(mock.MagicMock):
-            pass
+        connection.list_volumes.return_value = [GCEVolume('vol1', 100), GCEVolume('vol2', 200)]
 
-        class GCEFirewall(mock.MagicMock):
-            pass
+        self.assertEquals(self.cloud_driver.volume_size_map,
+                          {'http://link/to/vol1': 100,
+                           'http://link/to/vol2': 200})
 
-        vol1 = GCEVolume()
-        vol1.size = 20
-        vol1.extra = {'selfLink': 'https://www.googleapis.com/compute/v1/projects/a-project-id/zones/us-central1-f/disks/node1'}
+        self.cloud_driver.volume_size_map
 
-        node1 = GCENode()
-        node1.name = 'node1'
-        node1.image = 'ubuntu-1404-trusty-v20151113'
-        node1.size = 'n1-standard-2'
-        node1.extra = {'disks': [{'source': vol1.extra['selfLink']}],
-                       'tags': ['webapp']}
+        self.assertEqual(len(connection.list_volumes.call_args_list), 1,
+                         'Did not cache volume size map')
 
-        fw1 = GCEFirewall()
-        fw1.allowed = [{'IPProtocol': 'tcp', 'ports': ['22']}]
-        fw1.target_tags = None
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.detect_nodes')
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.detect_firewalls')
+    def test_detect_resources(self, detect_firewalls, detect_nodes):
+        node1 = cloud_models.Node(name='node1',
+                                  flavor='n1-standard-4',
+                                  image='ubuntu1404-12345678',
+                                  networks=[],
+                                  disk=20)
 
-        fw2 = GCEFirewall()
-        fw2.allowed = [{'IPProtocol': 'tcp', 'ports': ['8000-8080']}]
-        fw2.target_tags = None
+        node2 = cloud_models.Node(name='node2',
+                                  flavor='n1-standard-4',
+                                  image='ubuntu1404-12345678',
+                                  networks=[],
+                                  disk=20)
 
-        fw3 = GCEFirewall()
-        fw3.allowed = [{'IPProtocol': 'tcp', 'ports': ['443']}]
-        fw3.target_tags = ['webapp', 'dev']
+        node1.security_group_names = set(['webapp', 'ssh'])
+        node2.security_group_names = set(['webapp'])
 
-        connection.list_volumes.return_value = [vol1]
-        connection.list_nodes.return_value = [node1]
-        connection.ex_list_firewalls.return_value = [fw1, fw2, fw3]
+        sg_webapp = cloud_models.SecurityGroup(name='webapp')
+        sg_ssh = cloud_models.SecurityGroup(name='ssh')
+
+        sgr_https = cloud_models.SecurityGroupRule(security_group=sg_webapp,
+                                                   source_ip='0.0.0.0/0',
+                                                   from_port=443,
+                                                   to_port=443,
+                                                   protocol='tcp')
+
+        sgr_ssh = cloud_models.SecurityGroupRule(security_group=sg_ssh,
+                                                 source_ip='0.0.0.0/0',
+                                                 from_port=22,
+                                                 to_port=22,
+                                                 protocol='tcp')
+
+        detect_nodes.return_value = set([node1, node2])
+        detect_firewalls.return_value = (set([sg_webapp, sg_ssh]), set([sgr_https, sgr_ssh]))
+
         collection = self.cloud_driver.detect_resources()
 
-        self.assertIn(cloud_models.Node(name='node1',
-                                        image='ubuntu-1404-trusty-v20151113',
-                                        flavor='n1-standard-2',
-                                        disk=20,
-                                        networks=[],
-                                        security_groups=set([collection.security_groups['webapp']])),
-                      collection.nodes)
+        self.assertIn(node1, collection.nodes)
+        self.assertIn(node2, collection.nodes)
 
+        self.assertIn(sg_webapp, collection.nodes['node1'].security_groups)
+        self.assertIn(sg_ssh, collection.nodes['node1'].security_groups)
+
+        self.assertIn(sg_webapp, collection.nodes['node2'].security_groups)
+
+        self.assertIn(sg_webapp, collection.security_groups)
+        self.assertIn(sg_ssh, collection.security_groups)
+
+        self.assertIn(sgr_https, collection.security_group_rules)
+        self.assertIn(sgr_ssh, collection.security_group_rules)
+
+    def test_is_node_relevant_accepts_all_when_no_namespace_set(self):
+        self.assertTrue(self.cloud_driver._is_node_relevant(GCENode('node1')))
+        self.assertTrue(self.cloud_driver._is_node_relevant(GCENode('node1', namespace='something')))
+
+    def test_is_node_relevant_only_matching_namespace(self):
+        self.cloud_driver.namespace = 'testns'
+        self.assertFalse(self.cloud_driver._is_node_relevant(GCENode('node1')))
+        self.assertFalse(self.cloud_driver._is_node_relevant(GCENode('node1', namespace='something')))
+        self.assertTrue(self.cloud_driver._is_node_relevant(GCENode('node1', namespace='testns')))
+        self.assertFalse(self.cloud_driver._is_node_relevant(GCENode('node1', namespace='testns1')))
+
+    def test_node_from_gcenode(self):
+        gcenode = GCENode('testnode1', tags=['tag1', 'tag2'])
+        self.cloud_driver._volume_size_map = {'http://link/to/disk/testnode1': 10}
+        node = self.cloud_driver._node_from_gcenode(gcenode)
+        self.assertEqual(node.name, 'testnode1')
+        self.assertEqual(node.flavor, 'n1-standard-1')
+        self.assertEqual(node.image, 'ubuntu-1404-trusty-v20151113')
+        self.assertEqual(node.disk, 10)
+        self.assertEqual(node.networks, [])
+        self.assertEqual(node.security_group_names, set(['tag1', 'tag2']))
+        self.assertEqual(node.private, gcenode)
+
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver._is_node_relevant')
+    def test_get_relevant_nodes_ignores_irrelevant_nodes(self, _is_node_relevant, connection):
+        node1, node2 = GCENode('node1'), GCENode('node2')
+        connection.list_nodes.return_value = [node1, node2]
+        _is_node_relevant.side_effect = lambda n: n == node1
+
+        nodes = list(self.cloud_driver._get_relevant_nodes())
+        self.assertEqual(len(nodes), 1)
+        self.assertIn(node1, nodes)
+
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver._get_relevant_nodes')
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver._node_from_gcenode')
+    def test_detect_nodes_converts_to_nodes_from_gcenodes(self, _node_from_gcenode, _get_relevant_nodes):
+        _get_relevant_nodes.return_value = [mock.sentinel.node1, mock.sentinel.node2]
+
+        _node_from_gcenode.side_effect = lambda x: x
+        nodes = list(self.cloud_driver.detect_nodes())
+        self.assertEqual(len(nodes), 2)
+        _node_from_gcenode.assert_any_call(mock.sentinel.node1)
+        _node_from_gcenode.assert_any_call(mock.sentinel.node2)
+
+    def _get_firewalls(self):
+        class GCEFirewall(object):
+            def __init__(self, protocol, ports, tags):
+                self.allowed = [{'IPProtocol': protocol, 'ports': [ports]}]
+                self.target_tags = tags
+
+        fw1 = GCEFirewall('tcp', '22', None)
+        fw2 = GCEFirewall('tcp', '8000-8080', None)
+        fw3 = GCEFirewall('tcp', '443', ['webapp', 'dev'])
+        return fw1, fw2, fw3
+
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
+    def test_detect_firewalls(self, connection):
+        fw1, fw2, fw3 = self._get_firewalls()
+
+        connection.ex_list_firewalls.return_value = [fw1, fw2, fw3]
+        security_groups, security_group_rules = self.cloud_driver.detect_firewalls()
+        self.assertIn(cloud_models.SecurityGroup(name='webapp'), security_groups)
+        self.assertIn(cloud_models.SecurityGroup(name='dev'), security_groups)
+
+        webapp = cloud_models.SecurityGroup(name='webapp')
+        dev = cloud_models.SecurityGroup(name='dev')
         globalsg = cloud_models.SecurityGroup(name='global')
-        webappsg = cloud_models.SecurityGroup(name='webapp')
-        devsg = cloud_models.SecurityGroup(name='dev')
-        self.assertIn(globalsg, collection.security_groups)
-        self.assertIn(webappsg, collection.security_groups)
-        self.assertIn(devsg, collection.security_groups)
+
+        self.assertIn(webapp, security_groups)
+        self.assertIn(dev, security_groups)
+
+        self.assertIn(cloud_models.SecurityGroupRule(security_group=webapp,
+                                                     source_ip='0.0.0.0/0',
+                                                     from_port=443,
+                                                     to_port=443,
+                                                     protocol='tcp'),
+                      security_group_rules)
         self.assertIn(cloud_models.SecurityGroupRule(security_group=globalsg,
                                                      source_ip='0.0.0.0/0',
                                                      from_port=22,
                                                      to_port=22,
-                                                     protocol='tcp'), collection.security_group_rules)
+                                                     protocol='tcp'),
+                      security_group_rules)
         self.assertIn(cloud_models.SecurityGroupRule(security_group=globalsg,
                                                      source_ip='0.0.0.0/0',
                                                      from_port=8000,
                                                      to_port=8080,
-                                                     protocol='tcp'), collection.security_group_rules)
-        self.assertIn(cloud_models.SecurityGroupRule(security_group=devsg,
-                                                     source_ip='0.0.0.0/0',
-                                                     from_port=443,
-                                                     to_port=443,
-                                                     protocol='tcp'), collection.security_group_rules)
-        self.assertIn(cloud_models.SecurityGroupRule(security_group=webappsg,
-                                                     source_ip='0.0.0.0/0',
-                                                     from_port=443,
-                                                     to_port=443,
-                                                     protocol='tcp'), collection.security_group_rules)
-        self.assertEqual(len(collection.nodes), 1)
-        self.assertEqual(len(collection.security_groups), 3)
-        self.assertEqual(len(collection.security_group_rules), 4)
+                                                     protocol='tcp'),
+                      security_group_rules)
 
-        log_records = list(log.actual())
-        self.assertIn(('aasemble.deployment.cloud.gce', 'INFO', 'Detecting nodes'), log_records)
-        self.assertIn(('aasemble.deployment.cloud.gce', 'INFO', 'Detected node: node1'), log_records)
-        self.assertIn(('aasemble.deployment.cloud.gce', 'INFO', 'Detecting security groups and security group rules'), log_records)
-        self.assertIn(('aasemble.deployment.cloud.gce', 'INFO', 'Detected security group: webapp'), log_records)
-        self.assertIn(('aasemble.deployment.cloud.gce', 'INFO', 'Detected security group: global'), log_records)
-        self.assertIn(('aasemble.deployment.cloud.gce', 'INFO', 'Detected security group: dev'), log_records)
-        self.assertIn(('aasemble.deployment.cloud.gce', 'INFO', 'Detected security group rule for security group global: tcp: 22-22'), log_records)
-        self.assertIn(('aasemble.deployment.cloud.gce', 'INFO', 'Detected security group rule for security group global: tcp: 8000-8080'), log_records)
-        self.assertIn(('aasemble.deployment.cloud.gce', 'INFO', 'Detected security group rule for security group dev: tcp: 443-443'), log_records)
-        self.assertIn(('aasemble.deployment.cloud.gce', 'INFO', 'Detected security group rule for security group webapp: tcp: 443-443'), log_records)
-        self.assertEqual(len(log_records), 10, log_records)
+    def test_get_all_security_group_names(self):
+        firewalls = set(self._get_firewalls())
+        self.assertEqual(self.cloud_driver._get_all_security_group_names(firewalls),
+                         set(['global', 'dev', 'webapp']))
 
-    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
-    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver._disk_struct')
-    def test_apply_resources(self, _disk_struct, connection):
+    def _example_collection(self):
         collection = cloud_models.Collection()
         webappsg = cloud_models.SecurityGroup(name='webapp')
         collection.nodes.add(cloud_models.Node(name='webapp',
@@ -138,14 +241,16 @@ class GCEDriverTestCase(unittest.TestCase):
                                                flavor='n1-standard-2',
                                                disk=37,
                                                networks=[],
-                                               security_groups=set([webappsg])))
+                                               security_groups=set([webappsg]),
+                                               private=mock.sentinel.webapp1priv))
         collection.nodes.add(cloud_models.Node(name='webapp2',
                                                image='trusty',
                                                flavor='n1-standard-2',
                                                disk=37,
                                                networks=[],
                                                security_groups=set([webappsg]),
-                                               script='#!/bin/bash\necho hello\n'))
+                                               script='#!/bin/bash\necho hello\n',
+                                               private=mock.sentinel.webapp2priv))
         collection.security_groups.add(webappsg)
         collection.security_group_rules.add(cloud_models.SecurityGroupRule(security_group=webappsg,
                                                                            source_ip='0.0.0.0/0',
@@ -157,6 +262,84 @@ class GCEDriverTestCase(unittest.TestCase):
                                                                            from_port=8000,
                                                                            to_port=8080,
                                                                            protocol='tcp'))
+        return collection
+
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver._disk_struct')
+    def test_create_node_without_namespace_without_script(self, _disk_struct, connection):
+        collection = self._example_collection()
+        node = collection.nodes['webapp']
+        self.cloud_driver.create_node(node)
+        connection.create_node.assert_any_call(name='webapp',
+                                               size='n1-standard-2',
+                                               image=None,
+                                               ex_disks_gce_struct=_disk_struct.return_value,
+                                               ex_tags=['webapp'])
+
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver._disk_struct')
+    def test_create_node_without_namespace_with_script(self, _disk_struct, connection):
+        collection = self._example_collection()
+        node = collection.nodes['webapp2']
+        self.cloud_driver.create_node(node)
+        connection.create_node.assert_any_call(name='webapp2',
+                                               size='n1-standard-2',
+                                               image=None,
+                                               ex_disks_gce_struct=_disk_struct.return_value,
+                                               ex_metadata={'items': [{'key': 'startup-script',
+                                                                       'value': '#!/bin/bash\necho hello\n'}]},
+                                               ex_tags=['webapp'])
+
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver._disk_struct')
+    def test_create_node_with_namespace_no_script(self, _disk_struct, connection):
+        self.cloud_driver.namespace = 'testns'
+        collection = self._example_collection()
+        node = collection.nodes['webapp']
+        self.cloud_driver.create_node(node)
+        connection.create_node.assert_any_call(name='webapp',
+                                               size='n1-standard-2',
+                                               image=None,
+                                               ex_disks_gce_struct=_disk_struct.return_value,
+                                               ex_metadata={'items': [{'key': 'aasemble_namespace',
+                                                                       'value': 'testns'}]},
+                                               ex_tags=['webapp'])
+
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver._disk_struct')
+    def test_create_node_with_namespace_with_script(self, _disk_struct, connection):
+        self.cloud_driver.namespace = 'testns'
+        collection = self._example_collection()
+        node = collection.nodes['webapp2']
+        self.cloud_driver.create_node(node)
+        connection.create_node.assert_any_call(name='webapp2',
+                                               size='n1-standard-2',
+                                               image=None,
+                                               ex_disks_gce_struct=_disk_struct.return_value,
+                                               ex_metadata={'items': [{'key': 'startup-script',
+                                                                       'value': '#!/bin/bash\necho hello\n'},
+                                                                      {'key': 'aasemble_namespace',
+                                                                       'value': 'testns'}]},
+                                               ex_tags=['webapp'])
+
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver._disk_struct')
+    def test_create_node_no_namespace(self, _disk_struct, connection):
+        collection = self._example_collection()
+        node = collection.nodes['webapp2']
+        self.cloud_driver.create_node(node)
+        connection.create_node.assert_any_call(name='webapp2',
+                                               size='n1-standard-2',
+                                               image=None,
+                                               ex_disks_gce_struct=_disk_struct.return_value,
+                                               ex_metadata={'items': [{'key': 'startup-script',
+                                                                       'value': '#!/bin/bash\necho hello\n'}]},
+                                               ex_tags=['webapp'])
+
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver._disk_struct')
+    def test_apply_resources(self, _disk_struct, connection):
+        collection = self._example_collection()
         self.cloud_driver.apply_resources(collection)
         connection.create_node.assert_any_call(name='webapp',
                                                size='n1-standard-2',
@@ -181,6 +364,13 @@ class GCEDriverTestCase(unittest.TestCase):
                                                                 'ports': ['8000-8080']}],
                                                       source_ranges=['212.10.10.10/32'],
                                                       target_tags=['webapp'])
+
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
+    def test_clean_resources(self, connection):
+        collection = self._example_collection()
+        self.cloud_driver.clean_resources(collection)
+        connection.destroy_node.assert_any_call(mock.sentinel.webapp1priv)
+        connection.destroy_node.assert_any_call(mock.sentinel.webapp2priv)
 
     @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
     @mock.patch('aasemble.deployment.cloud.gce.GCEDriver._get_disk_type')
@@ -246,3 +436,35 @@ class GCEDriverTestCase(unittest.TestCase):
 
         self.assertEqual(self.cloud_driver._get_disk_type('pd-hdd'),
                          'http://hddlink')
+
+    def _test_get_namespace(self, metadata, expected_rv):
+        class GCENode(mock.MagicMock):
+            pass
+
+        node = GCENode()
+        node.extra = {}
+
+        if metadata:
+            node.extra['metadata'] = metadata
+
+        self.assertEqual(gce.get_namespace(node), expected_rv)
+
+    def test_get_namespace(self):
+        self._test_get_namespace({'fingerprint': 'WppLmdldALY=',
+                                  'items': [{'key': 'startup-script',
+                                             'value': '#!/bin/bash\necho hello\n'},
+                                            {'key': 'aasemble_namespace', 'value': 'foobar'}],
+                                  'kind': 'compute#metadata'}, 'foobar')
+
+    def test_get_namespace_no_metadata(self):
+        self._test_get_namespace(None, None)
+
+    def test_get_namespace_no_items_in_metadata(self):
+        self._test_get_namespace({'fingerprint': 'WppLmdldALY=',
+                                  'kind': 'compute#metadata'}, None)
+
+    def test_get_namespace_no_namespace_in_metadata(self):
+        self._test_get_namespace({'fingerprint': 'WppLmdldALY=',
+                                  'items': [{'key': 'startup-script',
+                                             'value': '#!/bin/bash\necho hello\n'}],
+                                  'kind': 'compute#metadata'}, None)

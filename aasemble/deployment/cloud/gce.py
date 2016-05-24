@@ -11,14 +11,27 @@ import aasemble.deployment.cloud.models as cloud_models
 LOG = logging.getLogger(__name__)
 
 
+def get_namespace(gcenode):
+    if 'metadata' not in gcenode.extra:
+        return None
+
+    if 'items' not in gcenode.extra['metadata']:
+        return None
+
+    for x in gcenode.extra['metadata']['items']:
+        if x['key'] == 'aasemble_namespace':
+            return x['value']
+
+
 class GCEDriver(CloudDriver):
     provider = Provider.GCE
 
     def __init__(self, *args, **kwargs):
         self.gce_key_file = kwargs.pop('gce_key_file')
         self.location = kwargs.pop('location')
-        super(GCEDriver, self).__init__(*args, **kwargs)
         self.locals = threading.local()
+        self._volume_size_map = None
+        super(GCEDriver, self).__init__(*args, **kwargs)
 
     @classmethod
     def get_kwargs_from_cloud_config(cls, cfgparser):
@@ -42,6 +55,14 @@ class GCEDriver(CloudDriver):
                 {'project': key_data['project_id'],
                  'datacenter': self.location})
 
+    @property
+    def volume_size_map(self):
+        if self._volume_size_map is None:
+            self._volume_size_map = {}
+            for volume in self.connection.list_volumes():
+                self._volume_size_map[volume.extra['selfLink']] = volume.size
+        return self._volume_size_map
+
     def detect_resources(self):
         collection = cloud_models.Collection()
 
@@ -63,27 +84,32 @@ class GCEDriver(CloudDriver):
 
         return collection
 
+    def _is_node_relevant(self, gcenode):
+        return self.namespace is None or get_namespace(gcenode) == self.namespace
+
+    def _node_from_gcenode(self, gcenode):
+        node = cloud_models.Node(name=gcenode.name,
+                                 flavor=gcenode.size,
+                                 image=gcenode.image,
+                                 disk=self.volume_size_map[gcenode.extra['disks'][0]['source']],
+                                 networks=[],
+                                 private=gcenode)
+        node.security_group_names = set(gcenode.extra['tags'])
+        return node
+
+    def _get_relevant_nodes(self):
+        for gcenode in self.connection.list_nodes():
+            if self._is_node_relevant(gcenode):
+                yield gcenode
+
     def detect_nodes(self):
         nodes = set()
-        volume_sizes = self._get_volume_size_map()
 
-        for gcenode in self.connection.list_nodes():
-            node = cloud_models.Node(name=gcenode.name,
-                                     flavor=gcenode.size,
-                                     image=gcenode.image,
-                                     disk=volume_sizes[gcenode.extra['disks'][0]['source']],
-                                     networks=[])
-            node.security_group_names = set(gcenode.extra['tags'])
-            nodes.add(node)
-            LOG.info('Detected node: %s' % node.name)
+        for gcenode in self._get_relevant_nodes():
+            nodes.add(self._node_from_gcenode(gcenode))
+            LOG.info('Detected node: %s' % gcenode.name)
 
         return nodes
-
-    def _get_volume_size_map(self):
-        volume_sizes = {}
-        for volume in self.connection.list_volumes():
-            volume_sizes[volume.extra['selfLink']] = volume.size
-        return volume_sizes
 
     def detect_firewalls(self):
         security_group_set = set()
@@ -145,9 +171,17 @@ class GCEDriver(CloudDriver):
                   'ex_disks_gce_struct': self._disk_struct(node),
                   'ex_tags': [sg.name for sg in node.security_groups]}
 
-        if node.script is not None:
-            kwargs['ex_metadata'] = {'items': [{'key': 'startup-script',
-                                                'value': node.script}]}
+        if node.script is not None or self.namespace is not None:
+            md_items = []
+            if node.script is not None:
+                md_items.append({'key': 'startup-script',
+                                 'value': node.script})
+            if self.namespace is not None:
+                md_items.append({'key': 'aasemble_namespace',
+                                 'value': self.namespace})
+
+            kwargs['ex_metadata'] = {'items': md_items}
+
         self.connection.create_node(**kwargs)
 
         LOG.info('Launced node: %s' % (node.name))
@@ -166,8 +200,13 @@ class GCEDriver(CloudDriver):
 
     def apply_resources(self, collection):
         self.pool.map(self.create_node, collection.nodes)
-
         self.pool.map(self.create_security_group_rule, collection.security_group_rules)
+
+    def delete_node(self, node):
+        self.connection.destroy_node(node.private)
+
+    def clean_resources(self, collection):
+        self.pool.map(self.delete_node, collection.nodes)
 
     def _disk_struct(self, node):
         return [{'boot': True,

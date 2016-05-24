@@ -3,10 +3,18 @@ from six.moves import configparser
 from aasemble.deployment.cloud.gce import GCEDriver
 
 
+class ConfigParser(configparser.ConfigParser):
+    def read_file_wrapper(self, fp):
+        try:
+            return self.read_file(fp)
+        except AttributeError:
+            return self.readfp(fp)
+
+
 def load_cloud_config(fpath):
-    parser = configparser.SafeConfigParser()
+    parser = ConfigParser()
     with open(fpath, 'r') as fp:
-        parser.readfp(fp)
+        parser.read_file_wrapper(fp)
     driver_name = parser.get('connection', 'driver')
     if driver_name == 'gce':
         driver_class = GCEDriver

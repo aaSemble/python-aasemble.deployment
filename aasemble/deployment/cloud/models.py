@@ -21,7 +21,12 @@ class NamedSet(dict):
         return difference
 
     def __eq__(self, other):
+        if type(other) == NamedSet:
+            return set(self.values()) == set(other.values())
         return set(self.values()) == other
+
+    def __ne__(self, other):
+        return not (self == other)
 
     def __iter__(self):
         return iter(self.values())
@@ -66,7 +71,7 @@ class CloudModel(object):
 
 
 class Node(CloudModel):
-    def __init__(self, name, flavor, image, networks, disk, security_groups=None, runner=None, keypair=None, script=None, attempts_left=1):
+    def __init__(self, name, flavor, image, networks, disk, security_groups=None, runner=None, keypair=None, script=None, attempts_left=1, private=None):
         self.name = name
         self.flavor = flavor
         self.image = image
@@ -77,6 +82,7 @@ class Node(CloudModel):
         self.keypair = keypair
         self.script = script
         self.attempts_left = attempts_left
+        self.private = private
 
         self.server_id = None
         self.fips = set()
@@ -118,8 +124,8 @@ class SecurityGroupRule(CloudModel):
         self.protocol = protocol
 
     def __repr__(self):  # pragma: no cover
-        return ("<SecurityGroupRule source_ip='%s', from_port=%d, to_port=%d, protocol='%s'>" %
-                (self.source_ip, self.from_port, self.to_port, self.protocol))
+        return ("<SecurityGroupRule source_ip='%s', from_port=%d, to_port=%d, protocol='%s' security_group='%s'>" %
+                (self.source_ip, self.from_port, self.to_port, self.protocol, self.security_group.name))
 
     id_attrs = ('security_group', 'source_ip', 'from_port', 'to_port', 'protocol')
 
