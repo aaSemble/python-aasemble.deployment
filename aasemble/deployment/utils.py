@@ -13,6 +13,7 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 import re
+import string
 
 import yaml
 
@@ -48,3 +49,11 @@ def parse_time(time_string):
     except KeyError:
         raise exceptions.InvalidTimeException()
     return count * multiplier
+
+
+def interpolate(s, d):
+    if s is None:
+        return None
+    if d is None:
+        d = {}
+    return string.Template(s).substitute(**d)

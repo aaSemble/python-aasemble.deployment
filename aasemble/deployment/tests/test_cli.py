@@ -30,7 +30,7 @@ class CliTestCase(unittest.TestCase):
 
             aasemble.deployment.cli.apply(options)
 
-        loader.load.assert_called_with(options.stack)
+        loader.load.assert_called_with(options.stack, {})
 
         if assume_empty:
             detect_resources.assert_not_called()
@@ -77,3 +77,11 @@ class CliTestCase(unittest.TestCase):
         self.assertEqual(len(detect.call_args_list), 1)
         options = detect.call_args_list[0][0][0]
         self.assertEqual(options.cloud, 'cloud.ini')
+
+    def test_extract_substitutions(self):
+        extract_substitutions = aasemble.deployment.cli.extract_substitutions
+        self.assertEqual(extract_substitutions([]), {})
+        self.assertEqual(extract_substitutions(['foo=bar']), {'foo': 'bar'})
+        self.assertEqual(extract_substitutions(['foo=bar=baz']), {'foo': 'bar=baz'})
+        self.assertEqual(extract_substitutions(['foo=bar', 'bar=baz']), {'foo': 'bar', 'bar': 'baz'})
+        self.assertEqual(extract_substitutions(['foo=bar', 'foo=baz']), {'foo': 'baz'})

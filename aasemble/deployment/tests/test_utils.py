@@ -61,3 +61,18 @@ class UtilsTests(unittest.TestCase):
                                       'line': 23},
                                      {'code': 'foo = bar', 'file': 'MoreClass.py', 'line': 58}],
                            'User': 'ed'}])
+
+    def test_interpolate(self):
+        self.assertEqual(utils.interpolate('Hello, $who!', {'who': 'world'}), "Hello, world!")
+
+    def test_interpolate_with_braces(self):
+        self.assertEqual(utils.interpolate('Hello, ${who}!', {'who': 'world'}), "Hello, world!")
+
+    def test_interpolate_escape(self):
+        self.assertEqual(utils.interpolate('Hello, $$who!', {'who': 'world'}), "Hello, $who!")
+
+    def test_interpolate_raises_on_unset_variable(self):
+        self.assertRaises(KeyError, utils.interpolate, 'Hello, $who!', {})
+
+    def test_interpolate_returns_None_when_s_is_None(self):
+        self.assertEqual(utils.interpolate(None, {'who': 'world'}), None)

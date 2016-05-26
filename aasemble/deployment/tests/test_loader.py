@@ -1,6 +1,8 @@
 import os.path
 import unittest
 
+import mock
+
 from testfixtures import log_capture
 
 import aasemble.deployment.cloud.models as cloud_models
@@ -49,16 +51,18 @@ class ParserTestCase(unittest.TestCase):
                   ('aasemble.deployment.loader', 'INFO', 'Loaded security group webapp from stack'),
                   ('aasemble.deployment.loader', 'INFO', 'Loaded security group rule from stack: tcp: 443-443'))
 
+    @mock.patch('aasemble.deployment.loader.interpolate')
     @log_capture()
-    def test_with_script(self, log):
+    def test_with_script(self, interpolate, log):
         collection = loader.load(self._get_full_path_for_test_data('with_script.yaml'))
         sg = cloud_models.SecurityGroup(name='webapp')
 
         script = '#!/bin/sh\nadduser --system web\napt-get install python-virtualenv\netc. etc. etc.\n'
 
-        self.assertIn(cloud_models.Node(name='webapp1', flavor='webapp', image='trusty', disk=10, networks=[], security_groups=set([sg]), script=script), collection.nodes)
-        self.assertIn(cloud_models.Node(name='webapp2', flavor='webapp', image='trusty', disk=10, networks=[], security_groups=set([sg]), script=script), collection.nodes)
+        self.assertIn(cloud_models.Node(name='webapp1', flavor='webapp', image='trusty', disk=10, networks=[], security_groups=set([sg]), script=interpolate.return_value), collection.nodes)
+        self.assertIn(cloud_models.Node(name='webapp2', flavor='webapp', image='trusty', disk=10, networks=[], security_groups=set([sg]), script=interpolate.return_value), collection.nodes)
 
+        interpolate.assert_called_with(script, None)
         self.assertIn(sg, collection.security_groups)
         self.assertIn(cloud_models.SecurityGroupRule(security_group=sg, source_ip='0.0.0.0/0', from_port=443, to_port=443, protocol='tcp'), collection.security_group_rules)
         self.assertEqual(len(collection.nodes), 2)

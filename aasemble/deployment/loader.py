@@ -1,16 +1,16 @@
 import logging
 
 import aasemble.deployment.cloud.models as cloud_models
-from aasemble.deployment.utils import load_yaml
+from aasemble.deployment.utils import load_yaml, interpolate
 
 LOG = logging.getLogger(__name__)
 
 
-def load(fpath):
+def load(fpath, substitutions=None):
     data = load_yaml(fpath)[0]
     collection = cloud_models.Collection()
 
-    for node in build_nodes(data):
+    for node in build_nodes(data, substitutions):
         collection.nodes.add(node)
 
     security_groups, security_group_rules = build_security_groups_and_rules(data)
@@ -25,7 +25,7 @@ def load(fpath):
     return collection
 
 
-def build_nodes(data):
+def build_nodes(data, substitutions=None):
     collection = set()
     for name in data.get('nodes', {}):
         node_info = data['nodes'][name]
@@ -41,7 +41,7 @@ def build_nodes(data):
                                      image=node_info['image'],
                                      disk=node_info['disk'],
                                      networks=node_info.get('networks', []),
-                                     script=node_info.get('script', None))
+                                     script=interpolate(node_info.get('script', None), substitutions))
             node.security_group_names = node_info.get('security_groups', [])
             collection.add(node)
     return collection

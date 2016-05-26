@@ -8,9 +8,16 @@ from aasemble.deployment import loader
 from aasemble.deployment.cloudconfigparser import load_cloud_config
 from aasemble.deployment.utils import FakeResourceRecorder
 
+def extract_substitutions(substargs):
+    d = {}
+    for arg in substargs:
+        if '=' in arg:
+            k, v = arg.split('=', 1)
+            d[k] = v
+    return d
 
 def apply(options):
-    resources = loader.load(options.stack)
+    resources = loader.load(options.stack, extract_substitutions(options.substitutions))
     cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(options.cloud)
     resource_recorder = FakeResourceRecorder()
     pool = ThreadPool()
@@ -57,6 +64,7 @@ def main(args=sys.argv[1:]):
     apply_parser.add_argument('--namespace', help='Namespace for resources')
     apply_parser.add_argument('stack', help='Stack description (yaml format)')
     apply_parser.add_argument('cloud', help='Cloud config')
+    apply_parser.add_argument('substitutions', nargs='*', help='Substitutions (e.g. "foo=bar")', metavar='SUBST')
 
     detect_parser = subparsers.add_parser('detect', help='Detect current resources')
     detect_parser.set_defaults(func=detect)
