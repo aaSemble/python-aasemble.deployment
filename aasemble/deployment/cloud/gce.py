@@ -1,5 +1,6 @@
 import json
 import logging
+import os.path
 import threading
 
 from libcloud.compute.providers import get_driver
@@ -29,14 +30,24 @@ class GCEDriver(CloudDriver):
     def __init__(self, *args, **kwargs):
         self.gce_key_file = kwargs.pop('gce_key_file')
         self.location = kwargs.pop('location')
+        self.username = kwargs.pop('username', 'ubuntu')
+        self.ssh_key_file = kwargs.pop('ssh_key_file', None)
         self.locals = threading.local()
         self._volume_size_map = None
         super(GCEDriver, self).__init__(*args, **kwargs)
 
     @classmethod
     def get_kwargs_from_cloud_config(cls, cfgparser):
-        return {'gce_key_file': cfgparser.get('connection', 'key_file'),
-                'location': cfgparser.get('connection', 'location')}
+        kwargs = {'gce_key_file': cfgparser.get('connection', 'key_file'),
+                 'location': cfgparser.get('connection', 'location')}
+
+        if cfgparser.has_option('connection', 'username'):
+            kwargs['username'] = cfgparser.get('connection', 'username')
+
+        if cfgparser.has_option('connection', 'sshkey'):
+            kwargs['ssh_key_file'] = cfgparser.get('connection', 'sshkey')
+
+        return kwargs
 
     @property
     def connection(self):
@@ -171,14 +182,22 @@ class GCEDriver(CloudDriver):
                   'ex_disks_gce_struct': self._disk_struct(node),
                   'ex_tags': [sg.name for sg in node.security_groups]}
 
-        if node.script is not None or self.namespace is not None:
+        ssh_keys = self._ssh_metadata()
+
+        if node.script is not None or self.namespace is not None or ssh_keys is not None:
             md_items = []
+
             if node.script is not None:
                 md_items.append({'key': 'startup-script',
                                  'value': node.script})
+
             if self.namespace is not None:
                 md_items.append({'key': 'aasemble_namespace',
                                  'value': self.namespace})
+
+            if ssh_keys is not None:
+                md_items.append({'key': 'ssh-keys',
+                                 'value': ssh_keys})
 
             kwargs['ex_metadata'] = {'items': md_items}
 
@@ -237,3 +256,14 @@ class GCEDriver(CloudDriver):
         for disktype in self.connection.ex_list_disktypes(self.location):
             if disktype.name == name:
                 return disktype.extra['selfLink']
+
+    def expand_path(self, path):
+        return os.path.expanduser(path)
+
+    def _format_ssh_metadata(self, username, ssh_key_data):
+        return '%s:%s' % (username, ssh_key_data)
+
+    def _ssh_metadata(self):
+        if self.ssh_key_file:
+            with open(self.expand_path(self.ssh_key_file), 'r') as fp:
+                return self._format_ssh_metadata(self.username, fp.read().rstrip())

@@ -1,0 +1,11 @@
+nodes:
+  web:
+    count: 3
+    flavor: small
+    image: trusty
+    disk: 10
+    securitygroups:
+      default
+    script: |
+      #!/bin/bash -x
+      curl https://aasemble.com/installer/current/install.sh | CLUSTER=${cluster} NUM_SERVERS=3 bash

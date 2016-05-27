@@ -468,3 +468,26 @@ class GCEDriverTestCase(unittest.TestCase):
                                   'items': [{'key': 'startup-script',
                                              'value': '#!/bin/bash\necho hello\n'}],
                                   'kind': 'compute#metadata'}, None)
+
+    def test_expand_path(self):
+        os.environ['USER'] = 'someuser'
+        os.environ['HOME'] = '/home/someuser'
+        self.assertEquals(self.cloud_driver.expand_path('~/foo/bar.baz'), '/home/someuser/foo/bar.baz')
+
+    def test_format_ssh_metadata(self):
+        self.assertEquals(self.cloud_driver._format_ssh_metadata('soren', 'ssh-rsa AAAAA21341451352345 foo@bar'),
+                          'soren:ssh-rsa AAAAA21341451352345 foo@bar')
+
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.expand_path')
+    def test_ssh_metadata(self, expand_path):
+        self.cloud_driver.ssh_key_file = '~/somepath'
+        self.cloud_driver.username = 'someuser'
+        expand_path.return_value = os.path.join(os.path.dirname(__file__), '..', 'test_data', 'public.key')
+        self.assertEqual(self.cloud_driver._ssh_metadata(),
+                         'someuser:ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDT7UcaDrA8FVbepVxD+HuhXDDzE'
+                         'yy2pKGZcv2PstGVEW0ltspt7glmxNRHHBUuPsgvMQjVnLHvmxUE79DotCsMFg2o2lQM8uRlIAi'
+                         'X3tSeN5pgxbt1MhpmAV7AyCkDLsUeTWhfVeUgTO2amM5aKuJzGqxbNgf1tNKEdyspCm/c06L2r'
+                         'MQZ2MWhqHLPC4C4O3mGbuTeWthIU4PgWK8hGcqxm4QwACwpMT7iTfH8mALCmeCw0PQdE6Mz5rp'
+                         'FftvwOPpNwU0W/dfqjZ/zTa+n5wIzTL7d6qD3E2ihSIsP8YCObiICWBJFzidtbLxMNu5nZqPK7'
+                         'wPL7VzQS89FNQNSD4if soren')
+        expand_path.assert_called_with('~/somepath')
