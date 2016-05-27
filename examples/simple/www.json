@@ -1,0 +1,14 @@
+{
+  "service": {
+    "name": "www",
+    "port": 80,
+    "checks": [{
+        "id": "www",
+        "name": "HTTP on port 80",
+        "http": "http://localhost:80/",
+        "interval": "5s",
+        "timeout": "1s"
+      }
+    ]
+  }
+}
