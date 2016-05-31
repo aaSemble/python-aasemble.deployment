@@ -16,11 +16,19 @@ def extract_substitutions(substargs):
             d[k] = v
     return d
 
+
+def format_collection(collection):
+    out = 'Nodes:\n'
+    for node in collection.nodes:
+        out += '  %s: %s\n' % (node.name, node.private.public_ips)
+    return out
+
+
 def apply(options):
     resources = loader.load(options.stack, extract_substitutions(options.substitutions))
     cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(options.cloud)
     resource_recorder = FakeResourceRecorder()
-    pool = ThreadPool()
+    pool = ThreadPool(1)
     cloud_driver = cloud_driver_class(record_resource=resource_recorder.record,
                                       mappings=mappings,
                                       pool=pool,
@@ -32,6 +40,7 @@ def apply(options):
         resources = resources - current_resources
 
     cloud_driver.apply_resources(resources)
+    print(format_collection(resources))
 
 
 def detect(options):
@@ -43,7 +52,11 @@ def detect(options):
                                       pool=pool,
                                       namespace=options.namespace,
                                       **cloud_driver_kwargs)
-    return cloud_driver, cloud_driver.detect_resources()
+
+    resources = cloud_driver.detect_resources()
+    print(format_collection(resources))
+
+    return cloud_driver, resources
 
 
 def clean(options):

@@ -19,6 +19,15 @@ then
     chmod +x /usr/sbin/consul
 fi
 
+if ! which consul-template
+then
+    wget -O consul-template.zip https://releases.hashicorp.com/consul-template/0.14.0/consul-template_0.14.0_linux_amd64.zip
+    unzip consul-template.zip
+    mv consul-template /usr/bin/consul-template
+    chmod +x /usr/bin/consul-template
+fi
+
+
 # Create consul config, if it doesn't already exist
 if ! test -d /etc/consul.d
 then
@@ -29,14 +38,25 @@ then
     # Build datacenter value
     sanitized_dc=$(echo ${CLUSTER} | tr -d '.:/-')
 
-    cat << EOF > /etc/consul.d/agent.json
-    {
-      "bootstrap_expect": ${NUM_SERVERS},
-      "server": true,
-      "datacenter": "${sanitized_dc}",
-      "data_dir": "/var/lib/consul"
-    }
+    if [ "${SERVER}" = "1" ]
+    then
+        cat << EOF > /etc/consul.d/agent.json
+        {
+          "bootstrap_expect": ${NUM_SERVERS},
+          "server": true,
+          "datacenter": "${sanitized_dc}",
+          "data_dir": "/var/lib/consul"
+        }
 EOF
+    else
+        cat << EOF > /etc/consul.d/agent.json
+        {
+          "server": false,
+          "datacenter": "${sanitized_dc}",
+          "data_dir": "/var/lib/consul"
+        }
+EOF
+    fi
     mkdir -p /var/lib/consul
 fi
 

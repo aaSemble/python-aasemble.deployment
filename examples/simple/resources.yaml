@@ -1,4 +1,17 @@
 nodes:
+  lb:
+    flavor: small
+    image: trusty
+    disk: 10
+    security_groups:
+      - www
+    script: |
+      #!/bin/bash -x
+      curl https://aasemble.com/install.sh | CLUSTER=${cluster} bash
+      apt-get install -y haproxy
+      wget -O /etc/haproxy/haproxy.cfg.tmpl https://raw.githubusercontent.com/aaSemble/python-aasemble.deployment/master/examples/simple/haproxy.cfg.tmpl
+      sed -i -e 's/ENABLED=0/ENABLED=1/g' /etc/default/haproxy
+      consul-template -template "/etc/haproxy/haproxy.cfg.tmpl:/etc/haproxy/haproxy.cfg:/etc/init.d/haproxy reload"
   web:
     count: 3
     flavor: small
@@ -8,4 +21,14 @@ nodes:
       default
     script: |
       #!/bin/bash -x
-      curl https://aasemble.com/installer/current/install.sh | CLUSTER=${cluster} NUM_SERVERS=3 bash
+      curl https://aasemble.com/install.sh | CLUSTER=${cluster} NUM_SERVERS=3 SERVER=1 bash
+      apt-get install -y nginx
+      wget -O /etc/consul.d/www.json https://raw.githubusercontent.com/aaSemble/python-aasemble.deployment/master/examples/simple/www.json
+      consul reload
+      hostname > /usr/share/nginx/html/hostname.txt
+security_groups:
+  www:
+  - cidr: 0.0.0.0/0
+    from_port: 80
+    to_port: 80
+    protocol: tcp

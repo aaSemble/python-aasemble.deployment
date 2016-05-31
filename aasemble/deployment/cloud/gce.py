@@ -201,7 +201,7 @@ class GCEDriver(CloudDriver):
 
             kwargs['ex_metadata'] = {'items': md_items}
 
-        self.connection.create_node(**kwargs)
+        node.private = self.connection.create_node(**kwargs)
 
         LOG.info('Launced node: %s' % (node.name))
 
