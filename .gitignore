@@ -1,1 +1,7 @@
 examples/userdata.txt
+*.pyc
+.*.swp
+.coverage
+.tox
+*.egg-info
+venv

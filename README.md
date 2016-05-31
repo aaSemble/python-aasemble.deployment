@@ -1,102 +1,116 @@
 # aaSemble Deployment Engine
 
-![Travis status](https://travis-ci.org/aaSemble/python-aasemble.svg)
+![Travis status](https://travis-ci.org/aaSemble/python-aasemble.deployment.svg)
 
 This is the aaSemble Deployment Engine. It's a cloud centric deployment engine
 that aims to facilitate deployment for both ephemeral environments (for
-integration testing) as well for long-lived environments. Support for the
-latter is still a little sketchy, but it's improving quickly.
+integration testing) as well for long-lived environments.
 
-aaSemble Deployment Engine learns from a YAML file what needs to be done for
-your deployment.  Here's the simplest possible example:
-
-    main:
-      - shell:
-          cmd: "echo Hello, world"
-
-This defines a sequence of steps called "main". It could be named anything
-you like and you can have several in the same file.
-
-The main sequence in our example only has a single step: A shell step. It executes a single command which prints `Hello, world` and exits.
-
-You can also run commands on remote hosts:
-
-    main:
-      - shell:
-        type: remote
-        node: web1
-        cmd: "echo Hello, world"
-
-The output will be the same as in the previous example, but this time it will
-be executed on a remote host named web1.
-
-The shell step type has a number of attributes:
-
-- `cmd`: We've already seen this. It's the command to run. It's mandatory.
-- `type`: Can be set to "remote" if it's to be run remotely. Optional.
-- `node`: Specifies the remote host to run on if type: remote. Mandatory if type is "remote".
-- `retry-if-fails`: A boolean specifying whether to retry if the cmd fails.
-- `retry-delay`: Time to wait between retries. An integer will be treated as seconds. You can append `s`, `m`, `h` as suffixes. They do what you think they do.
-- `timeout`: Timeout for each command run. It will be terminated if it takes longer than this and will be considered a failure.
-- `total-timeout`: A timeout for all executions of this command (useful if you `retry-if-fails`).
-
-The other step type is "`provision`". This is where it gets interesting.
-
-The provision step type has only two attributes:
- - `stack`: name of another yaml file describing the stack you want to deploy.
- - `userdata`: name of a file that holds the userdata you want to pass to your shiny, new instances. It doesn't have to exist when we start running the sequence, so you can generate it in a preceding shell step.
-
-Let's look at an example stack file:
+aaSemble Deployment Engine reads a YAML file describing your service's
+architecture. Let's look at an example.
 
     nodes:
-      bootstrap:
-        flavor: bootstrap
+      lb:
+        flavor: proxy
         image: trusty
         disk: 10
-        networks:
-        - network: undercloud
-          securitygroups:
-          - jumphost
-          - undercloud
-    networks:
-      undercloud:
-        cidr: 10.130.182.0/24
-    securitygroups:
-      jumphost:
+        security_groups:
+          - www
+        script: |
+          #!/bin/bash -x
+          curl https://aasemble.com/installer/current/install.sh | CLUSTER=${cluster} bash
+          apt-get install -y haproxy
+          wget -O /etc/haproxy/haproxy.cfg.tmpl https://raw.githubusercontent.com/aaSemble/python-aasemble.deployment/master/examples/simple/haproxy.cfg.tmpl
+          sed -i -e 's/ENABLED=0/ENABLED=1/g' /etc/default/haproxy
+          consul-template -template "/etc/haproxy/haproxy.cfg.tmpl:/etc/haproxy/haproxy.cfg:/etc/init.d/haproxy reload"
+      web:
+        count: 3
+        flavor: web
+        image: trusty
+        disk: 10
+        securitygroups:
+          default
+        script: |
+          #!/bin/bash -x
+          curl https://aasemble.com/installer/current/install.sh | CLUSTER=${cluster} NUM_SERVERS=3 SERVER=1 bash
+          apt-get install -y nginx
+          wget -O /etc/consul.d/www.json https://raw.githubusercontent.com/aaSemble/python-aasemble.deployment/master/examples/simple/www.json
+          consul reload
+          hostname > /usr/share/nginx/html/hostname.txt
+    security_groups:
+      www:
       - cidr: 0.0.0.0/0
-        from_port: 22
-        to_port: 22
+        from_port: 80
+        to_port: 80
         protocol: tcp
-      undercloud:
 
-This particular stack file describes a number of different resoruces that constitute your deployment.
- - Two security groups:  `jumphost` and `undercloud`. `jumphost` has a single rule: Allow SSH from anywhere. `undercloud` has no rules. It exists to allow different hosts in that security group to communicate freely.
- - One network: `undercloud`
- - One node: `bootstrap`
+Starting from the top, we have a section called `nodes`. This is where
+we define our nodes.  We define a node called "lb" and another called
+"web". The web node has `count: 3`, so we're actually launching three
+of those. They'll be named "web1", "web2", and "web3".
 
-First all networks (and their subnets) are created. Then security groups. Then nodes. To make sure security groups are in effect at all times, ports are pre-created with their relevant config and then passed to the API call to create the instances.
+Both types of nodes specify a flavor. The "lb" variety uses a flavor
+called "proxy" and the "web" variety uses a flavor called "web". This
+lets users choose appropriate flavors for their deployment target.
+On some clouds you may want to use a general purpose flavor for your
+proxy, while other clouds might provide an instance flavor that is
+optimised for high throughput.
 
-You'll notice that `flavor` and `image` have human readable names. That's because these stack definitions should be agnostic to which cloud you're deploying to. To map these values to their correct values for a given cloud provider, a mapping file is passed in.
- 
-## Invoking aaSemble Deployment Engine
+Both types specify a generic image called "trusty". We generally prefer
+to use generic base images and perform customisations on boot.
 
-Let's look at how you actually use all of this.
+Both types also specify a boot disk size of 10GB.
 
-    $ cd examples; aasemble deploy --cfg test.yaml \
-                                   --key ${HOME}/.ssh/id_rsa.pub \
-                                   --mappings mappings.ini \
-                                   --suffix test1234 \
-                                   --cleanup cleanup.log \
-                                   main
+The load balancer instance has a security group called "www", while the
+web instances have a security group called "default". You can see the
+www security group being defined further down to allow traffic from
+everywhere to port 80.
 
-`aasemble` expects you to have some environment variables set to be able to authenticate. They are `OS_USERNAME`, `OS_PASSWORD`, `OS_TENANT_NAME`, `OS_AUTH_URL`. Their expected value should be fairly obvious.
+To bootstrap the nodes, we pass in a script that will be run at boot
+time. First, we install the aaSemble host agent. We pass in a `cluster`
+which helps the agent locate the other members of the cluster.
 
-We're passing in a mapping file: `mappings.ini`. Here's an example that matches the example stack file above:
+Once bootstrapped, the nodes have a working consul cluster, can send
+events, register services, etc. In our example, we make the web nodes
+register a service with Consul and haproxy on the load balancer nodes
+use that information from Consul to build their configuration.
+
+Once launched, you should be able to query the load balancer and fetch
+`hostname.txt` from it and have it show `web1`, `web2`, `web3` in a
+round-robin fashion.
+
+
+Let's take it for a spin, shall we?
+
+For this demo, we're assuming you're using Google Compute Engine. Create
+a new project for this and download a JSON file with the credentials.
+
+Create a gce.ini with the following contents:
+
+    [connection]
+    driver = gce
+    key_file = credentials.json
+    location = us-central1-f
+    username = soren
+    sshkey = ~/.ssh/id_rsa.pub
 
     [flavors]
-    bootstrap = 92065143-073f-4d88-b75e-360ae5c12eac
+    proxy = n1-standard-1
+    web = n1-standard-1
 
     [images]
-    trusty = e824592a-8265-4e32-98d9-8c20c3e19f7a
+    trusty = ubuntu-1404-trusty-v20160516
 
-Whenever a stack file references a flavor called "bootstrap", the mappings file provides a translation to a flavor ID specific to your target cloud. Same for images.
+We create a new cluster on the aaSemble node tracker:
+
+    $ curl -X POST https://aasemble.com/api/devel/clusters/ -d ' ' -s | python -m json.tool
+    {
+        "nodes": "https://aasemble.com/api/devel/clusters/12345508-4395-42cb-98bf-5d8c60faba3e/nodes/",
+        "self": "https://aasemble.com/api/devel/clusters/12345508-4395-42cb-98bf-5d8c60faba3e/"
+    }
+
+We pass the cluster ID into the deployment tool:
+
+    $ aasemble apply gce.ini examples/simple/resources.yaml
+
+...and you sit back and watch the magic happen.

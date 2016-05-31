@@ -1,0 +1,6 @@
+nodes:
+  webapp:
+    count: 2
+    flavor: webapp
+    image: trusty
+    disk: 10

@@ -1,0 +1,19 @@
+nodes:
+  webapp:
+    count: 2
+    flavor: webapp
+    image: trusty
+    disk: 10
+    security_groups:
+      - webapp
+    script: |
+      #!/bin/sh
+      adduser --system web
+      apt-get install python-virtualenv
+      etc. etc. etc.
+security_groups:
+  webapp:
+  - cidr: 0.0.0.0/0
+    from_port: 443
+    to_port: 443
+    protocol: tcp

@@ -13,8 +13,24 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 import re
+import string
+
+import yaml
 
 from aasemble.deployment import exceptions
+
+
+class FakeResourceRecorder(object):  # pragma: no cover
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def record(self, *args, **kwargs):
+        pass
+
+
+def load_yaml(f='.aasemble.yaml'):
+    with open(f, 'r') as fp:
+        return list(yaml.safe_load_all(fp))
 
 
 def parse_time(time_string):
@@ -33,3 +49,11 @@ def parse_time(time_string):
     except KeyError:
         raise exceptions.InvalidTimeException()
     return count * multiplier
+
+
+def interpolate(s, d):
+    if s is None:
+        return None
+    if d is None:
+        d = {}
+    return string.Template(s).substitute(**d)
