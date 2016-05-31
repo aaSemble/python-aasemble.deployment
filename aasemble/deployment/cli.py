@@ -8,6 +8,7 @@ from aasemble.deployment import loader
 from aasemble.deployment.cloudconfigparser import load_cloud_config
 from aasemble.deployment.utils import FakeResourceRecorder
 
+
 def extract_substitutions(substargs):
     d = {}
     for arg in substargs:

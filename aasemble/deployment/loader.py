@@ -1,7 +1,7 @@
 import logging
 
 import aasemble.deployment.cloud.models as cloud_models
-from aasemble.deployment.utils import load_yaml, interpolate
+from aasemble.deployment.utils import interpolate, load_yaml
 
 LOG = logging.getLogger(__name__)
 

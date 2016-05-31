@@ -39,7 +39,7 @@ class GCEDriver(CloudDriver):
     @classmethod
     def get_kwargs_from_cloud_config(cls, cfgparser):
         kwargs = {'gce_key_file': cfgparser.get('connection', 'key_file'),
-                 'location': cfgparser.get('connection', 'location')}
+                  'location': cfgparser.get('connection', 'location')}
 
         if cfgparser.has_option('connection', 'username'):
             kwargs['username'] = cfgparser.get('connection', 'username')
