@@ -4,6 +4,7 @@ import mock
 
 import aasemble.deployment.cli
 import aasemble.deployment.cloud.base
+import aasemble.deployment.cloud.models as cloud_models
 
 
 class CliTestCase(unittest.TestCase):
@@ -58,7 +59,8 @@ class CliTestCase(unittest.TestCase):
         detect_resources.assert_called_with()
 
     @mock.patch('aasemble.deployment.cli.load_cloud_config')
-    def test_clean(self, load_cloud_config):
+    @mock.patch('aasemble.deployment.cli.format_collection')
+    def test_clean(self, format_collection, load_cloud_config):
         options = mock.MagicMock()
         with mock.patch.multiple('aasemble.deployment.cloud.base.CloudDriver',
                                  clean_resources=mock.DEFAULT,
@@ -85,3 +87,15 @@ class CliTestCase(unittest.TestCase):
         self.assertEqual(extract_substitutions(['foo=bar=baz']), {'foo': 'bar=baz'})
         self.assertEqual(extract_substitutions(['foo=bar', 'bar=baz']), {'foo': 'bar', 'bar': 'baz'})
         self.assertEqual(extract_substitutions(['foo=bar', 'foo=baz']), {'foo': 'baz'})
+
+    def test_format_collection(self):
+        collection = cloud_models.Collection()
+
+        class GCENode(object):
+            def __init__(self, ip):
+                self.public_ips = [ip]
+
+        collection.nodes.add(cloud_models.Node(name='testnode', flavor='n1-standard-1',
+                                               image='someimage', networks=[], disk=10,
+                                               private=GCENode('10.0.0.1')))
+        self.assertEquals(aasemble.deployment.cli.format_collection(collection), "Nodes:\n  testnode: ['10.0.0.1']\n")
