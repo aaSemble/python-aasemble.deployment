@@ -116,18 +116,33 @@ class SecurityGroup(CloudModel):
 
 
 class SecurityGroupRule(CloudModel):
-    def __init__(self, security_group, source_ip, from_port, to_port, protocol):
+    def __init__(self, security_group, from_port, to_port, protocol, source_ip=None, source_group=None):
         self.security_group = security_group
         self.source_ip = source_ip
+        self.source_group = source_group
         self.from_port = from_port
         self.to_port = to_port
         self.protocol = protocol
 
     def __repr__(self):  # pragma: no cover
-        return ("<SecurityGroupRule source_ip='%s', from_port=%d, to_port=%d, protocol='%s' security_group='%s'>" %
-                (self.source_ip, self.from_port, self.to_port, self.protocol, self.security_group.name))
+        rv = '<SecurityGroupRule '
 
-    id_attrs = ('security_group', 'source_ip', 'from_port', 'to_port', 'protocol')
+        if self.source_ip:
+            rv += "source_ip='%s' " % self.source_ip
+        elif self.source_group:
+            rv += "source_group='%s' " % self.source_group
+
+        if self.from_port and self.to_port:
+            rv += 'from_port=%d to_port=%d ' % (self.from_port, self.to_port)
+
+        if self.protocol:
+            rv += "protocol='%s' " % (self.protocol,)
+
+        rv += "security_group='%s'>" % self.security_group.name
+
+        return rv
+
+    id_attrs = ('security_group', 'source_ip', 'source_group', 'from_port', 'to_port', 'protocol')
 
 
 def stringify(security_groups):

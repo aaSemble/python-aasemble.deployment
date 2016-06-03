@@ -6,7 +6,6 @@ from multiprocessing.pool import ThreadPool
 
 from aasemble.deployment import loader
 from aasemble.deployment.cloudconfigparser import load_cloud_config
-from aasemble.deployment.utils import FakeResourceRecorder
 
 
 def extract_substitutions(substargs):
@@ -28,10 +27,8 @@ def format_collection(collection):
 def apply(options):
     resources = loader.load(options.stack, extract_substitutions(options.substitutions))
     cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(options.cloud)
-    resource_recorder = FakeResourceRecorder()
-    pool = ThreadPool(1)
-    cloud_driver = cloud_driver_class(record_resource=resource_recorder.record,
-                                      mappings=mappings,
+    pool = ThreadPool(10)
+    cloud_driver = cloud_driver_class(mappings=mappings,
                                       pool=pool,
                                       namespace=options.namespace,
                                       **cloud_driver_kwargs)
@@ -46,10 +43,8 @@ def apply(options):
 
 def detect(options):
     cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(options.cloud)
-    resource_recorder = FakeResourceRecorder()
     pool = ThreadPool()
-    cloud_driver = cloud_driver_class(record_resource=resource_recorder.record,
-                                      mappings=mappings,
+    cloud_driver = cloud_driver_class(mappings=mappings,
                                       pool=pool,
                                       namespace=options.namespace,
                                       **cloud_driver_kwargs)

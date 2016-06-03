@@ -1,5 +1,6 @@
 from six.moves import configparser
 
+from aasemble.deployment.cloud.aws import AWSDriver
 from aasemble.deployment.cloud.gce import GCEDriver
 
 
@@ -13,11 +14,17 @@ class ConfigParser(configparser.ConfigParser):
 
 def load_cloud_config(fpath):
     parser = ConfigParser()
+
     with open(fpath, 'r') as fp:
         parser.read_file_wrapper(fp)
+
     driver_name = parser.get('connection', 'driver')
+
     if driver_name == 'gce':
         driver_class = GCEDriver
+    elif driver_name == 'aws':
+        driver_class = AWSDriver
+
     mappings = {'images': {},
                 'flavors': {}}
 

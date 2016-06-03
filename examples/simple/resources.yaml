@@ -5,9 +5,11 @@ nodes:
     disk: 10
     security_groups:
       - www
+      - ssh
+      - consul
     script: |
       #!/bin/bash -x
-      curl https://aasemble.com/install.sh | CLUSTER=${cluster} bash
+      curl https://aasemble.com/installer/current/install.sh | CLUSTER=${cluster} bash
       apt-get install -y haproxy
       wget -O /etc/haproxy/haproxy.cfg.tmpl https://raw.githubusercontent.com/aaSemble/python-aasemble.deployment/master/examples/simple/haproxy.cfg.tmpl
       sed -i -e 's/ENABLED=0/ENABLED=1/g' /etc/default/haproxy
@@ -17,11 +19,12 @@ nodes:
     flavor: small
     image: trusty
     disk: 10
-    securitygroups:
-      default
+    security_groups:
+      - wwwbackend
+      - consul
     script: |
       #!/bin/bash -x
-      curl https://aasemble.com/install.sh | CLUSTER=${cluster} NUM_SERVERS=3 SERVER=1 bash
+      curl https://aasemble.com/installer/current/install.sh | CLUSTER=${cluster} NUM_SERVERS=3 SERVER=1 bash
       apt-get install -y nginx
       wget -O /etc/consul.d/www.json https://raw.githubusercontent.com/aaSemble/python-aasemble.deployment/master/examples/simple/www.json
       consul reload
@@ -32,3 +35,22 @@ security_groups:
     from_port: 80
     to_port: 80
     protocol: tcp
+  wwwbackend:
+  - source_group: www
+    from_port: 80
+    to_port: 80
+    protocol: tcp
+  ssh:
+  - cidr: 0.0.0.0/0
+    from_port: 22
+    to_port: 22
+    protocol: tcp
+  consul:
+  - source_group: consul
+    from_port: 8300
+    to_port: 8302
+    protocol: tcp
+  - source_group: consul
+    from_port: 8300
+    to_port: 8302
+    protocol: udp
