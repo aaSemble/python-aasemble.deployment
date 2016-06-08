@@ -57,10 +57,17 @@ def build_security_groups_and_rules(data):
         security_groups.add(security_group)
         for rule in security_group_info:
             LOG.info('Loaded security group rule from stack: %s: %d-%d' % (rule['protocol'], rule['from_port'], rule['to_port']))
-            security_group_rule = cloud_models.SecurityGroupRule(security_group=security_group,
-                                                                 source_ip=rule['cidr'],
-                                                                 from_port=rule['from_port'],
-                                                                 to_port=rule['to_port'],
-                                                                 protocol=rule['protocol'])
+            kwargs = {'security_group': security_group,
+                      'from_port': rule['from_port'],
+                      'to_port': rule['to_port'],
+                      'protocol': rule['protocol']}
+
+            if 'cidr' in rule:
+                kwargs['source_ip'] = rule['cidr']
+            elif 'source_group' in rule:
+                kwargs['source_group'] = rule['source_group']
+
+            security_group_rule = cloud_models.SecurityGroupRule(**kwargs)
+
             security_group_rules.add(security_group_rule)
     return security_groups, security_group_rules
