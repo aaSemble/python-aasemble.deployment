@@ -5,6 +5,8 @@ then
     exit 1
 fi
 
+apt-get update
+
 apt-get install wget unzip jq httpie
 
 tmpdir=$(mktemp -d)
