@@ -4,6 +4,7 @@ import threading
 from multiprocessing.pool import ThreadPool
 
 from libcloud.compute.providers import get_driver
+from libcloud.utils.publickey import get_pubkey_comment
 
 import aasemble.deployment.cloud.models as cloud_models
 
@@ -84,3 +85,24 @@ class CloudDriver(object):
 
     def expand_path(self, path):
         return os.path.expanduser(path)
+
+    def _get_resource_by_attr(self, f, attr, match):
+        return [x for x in f() if getattr(x, attr) == match][0]
+
+    def find_key_pair_by_fingerprint(self, fingerprint):
+        return self._get_resource_by_attr(self.connection.list_key_pairs, 'fingerprint', fingerprint)
+
+    def find_or_import_keypair_by_key_material(self, pubkey):
+        key_fingerprint = self.get_fingerprint(pubkey)
+        key_comment = get_pubkey_comment(pubkey, default='unnamed')
+        key_name = '%s-%s' % (key_comment, key_fingerprint)
+
+        try:
+            kp = self.find_key_pair_by_fingerprint(key_fingerprint)
+        except IndexError:
+            kp = self.connection.create_key_pair(key_name, pubkey)
+
+        result = {'keyName': kp.name,
+                  'keyFingerprint': kp.fingerprint}
+
+        return result

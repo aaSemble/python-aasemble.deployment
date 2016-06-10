@@ -7,6 +7,8 @@ from multiprocessing.pool import ThreadPool
 from aasemble.deployment import loader
 from aasemble.deployment.cloudconfigparser import load_cloud_config
 
+DEFAULT_THREADS = 10
+
 
 def extract_substitutions(substargs):
     d = {}
@@ -27,7 +29,7 @@ def format_collection(collection):
 def apply(options):
     resources = loader.load(options.stack, extract_substitutions(options.substitutions))
     cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(options.cloud)
-    pool = ThreadPool(10)
+    pool = ThreadPool(options.threads)
     cloud_driver = cloud_driver_class(mappings=mappings,
                                       pool=pool,
                                       namespace=options.namespace,
@@ -43,7 +45,7 @@ def apply(options):
 
 def detect(options):
     cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(options.cloud)
-    pool = ThreadPool()
+    pool = ThreadPool(options.threads)
     cloud_driver = cloud_driver_class(mappings=mappings,
                                       pool=pool,
                                       namespace=options.namespace,
@@ -62,6 +64,9 @@ def clean(options):
 
 def main(args=sys.argv[1:]):
     parser = argparse.ArgumentParser()
+
+    parser.add_argument('--threads', type=int, default=DEFAULT_THREADS,
+                        help='Number of threads [default={}]'.format(DEFAULT_THREADS))
 
     logging.basicConfig(level=logging.DEBUG, format='%(asctime)-15s %(message)s')
 
