@@ -5,6 +5,8 @@ then
     exit 1
 fi
 
+apt-get update
+
 apt-get install wget unzip jq httpie
 
 tmpdir=$(mktemp -d)
@@ -45,6 +47,7 @@ then
           "bootstrap_expect": ${NUM_SERVERS},
           "server": true,
           "datacenter": "${sanitized_dc}",
+          "advertise_addr": "${local_ip}",
           "data_dir": "/var/lib/consul"
         }
 EOF
@@ -53,6 +56,7 @@ EOF
         {
           "server": false,
           "datacenter": "${sanitized_dc}",
+          "advertise_addr": "${local_ip}",
           "data_dir": "/var/lib/consul"
         }
 EOF
