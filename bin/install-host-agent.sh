@@ -45,6 +45,7 @@ then
           "bootstrap_expect": ${NUM_SERVERS},
           "server": true,
           "datacenter": "${sanitized_dc}",
+          "advertise_addr": "${local_ip}",
           "data_dir": "/var/lib/consul"
         }
 EOF
@@ -53,6 +54,7 @@ EOF
         {
           "server": false,
           "datacenter": "${sanitized_dc}",
+          "advertise_addr": "${local_ip}",
           "data_dir": "/var/lib/consul"
         }
 EOF
