@@ -18,6 +18,7 @@ class CliTestCase(unittest.TestCase):
     def _test_apply(self, assume_empty, loader, load_cloud_config):
         options = mock.MagicMock()
         options.assume_empty = assume_empty
+        options.threads = 1
 
         resources = loader.load.return_value
 
