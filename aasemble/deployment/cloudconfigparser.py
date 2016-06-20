@@ -1,6 +1,7 @@
 from six.moves import configparser
 
 from aasemble.deployment.cloud.aws import AWSDriver
+from aasemble.deployment.cloud.digitalocean import DigitalOceanDriver
 from aasemble.deployment.cloud.gce import GCEDriver
 
 
@@ -24,6 +25,8 @@ def load_cloud_config(fpath):
         driver_class = GCEDriver
     elif driver_name == 'aws':
         driver_class = AWSDriver
+    elif driver_name == 'digitalocean':
+        driver_class = DigitalOceanDriver
 
     mappings = {'images': {},
                 'flavors': {}}

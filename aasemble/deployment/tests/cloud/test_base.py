@@ -155,3 +155,96 @@ class CloudDriverTests(unittest.TestCase):
         self.assertIn(mock.sentinel.sg2, self.created_security_groups)
         self.assertIn(mock.sentinel.sgr1, self.created_security_group_rules)
         self.assertIn(mock.sentinel.sgr2, self.created_security_group_rules)
+
+    def _test_find_or_import_keypair_by_key_material(self):
+        class TestDriver(base.CloudDriver):
+            def get_fingerprint(self, pubkey):
+                return 'thefingerprint'
+
+        cloud_driver = TestDriver()
+        cloud_driver.find_or_import_keypair_by_key_material('thepubkey')
+
+    def test_get_resource_by_attr(self):
+        class TestClass(object):
+            def __init__(self, val):
+                self.val = val
+
+        obj1 = TestClass('foo')
+        obj2 = TestClass(1)
+        obj3 = TestClass({})
+
+        arr = [obj1, obj2, obj3]
+
+        self.assertIs(base.CloudDriver()._get_resource_by_attr(lambda: arr, 'val', 'foo'), obj1)
+        self.assertIs(base.CloudDriver()._get_resource_by_attr(lambda: arr, 'val', 1), obj2)
+        self.assertIs(base.CloudDriver()._get_resource_by_attr(lambda: arr, 'val', {}), obj3)
+        self.assertRaises(AttributeError, base.CloudDriver()._get_resource_by_attr, lambda: arr, 'blah', {})
+        self.assertRaises(IndexError, base.CloudDriver()._get_resource_by_attr, lambda: arr, 'val', 1234)
+
+    def test_find_key_pair_by_fingerprint(self):
+        class TestDriver(base.CloudDriver):
+            connection = mock.MagicMock()
+
+            def _get_resource_by_attr(selff, f, attr, val):
+                self.assertEqual(val, 'thefingerprint')
+                self.assertEqual(attr, 'fingerprint')
+                self.assertEqual(f, self.cloud_driver.connection.list_key_pairs)
+                selff.called = True
+
+        self.cloud_driver = TestDriver()
+        self.cloud_driver.find_key_pair_by_fingerprint('thefingerprint')
+        self.assertEqual(self.cloud_driver.called, True)
+
+    @mock.patch('aasemble.deployment.cloud.base.get_pubkey_comment')
+    def test_find_or_import_keypair_by_key_material(self, get_pubkey_comment):
+        class KeyPair(object):
+            def __init__(self, name, fingerprint):
+                self.name = name
+                self.fingerprint = fingerprint
+
+        class TestDriver(base.CloudDriver):
+            connection = mock.MagicMock()
+
+            def find_key_pair_by_fingerprint(selff, fingerprint):
+                self.assertEqual(fingerprint, 'thefingerprint')
+                return KeyPair('thekeyname', 'thefingerprint')
+
+            def get_fingerprint(selff, pubkey):
+                self.assertEqual(pubkey, 'thepublickey')
+                return 'thefingerprint'
+
+        cloud_driver = TestDriver()
+        get_pubkey_comment.return_value = 'thecomment'
+        self.assertEquals(cloud_driver.find_or_import_keypair_by_key_material('thepublickey'),
+                          {'keyName': 'thekeyname', 'keyFingerprint': 'thefingerprint'})
+
+        get_pubkey_comment.assert_called_with('thepublickey', default='unnamed')
+
+    @mock.patch('aasemble.deployment.cloud.base.get_pubkey_comment')
+    def test_find_or_import_keypair_by_key_material_not_found(self, get_pubkey_comment):
+        class KeyPair(object):
+            def __init__(self, name, fingerprint):
+                self.name = name
+                self.fingerprint = fingerprint
+
+        class TestDriver(base.CloudDriver):
+            connection = mock.MagicMock()
+
+            def find_key_pair_by_fingerprint(selff, fingerprint):
+                raise IndexError('nope!')
+
+            def get_fingerprint(selff, pubkey):
+                self.assertEqual(pubkey, 'thepublickey')
+                return 'thefingerprint'
+
+        cloud_driver = TestDriver()
+
+        get_pubkey_comment.return_value = 'thecomment'
+        cloud_driver.connection.create_key_pair.return_value = KeyPair('thekeyname', 'thefingerprint')
+
+        self.assertEquals(cloud_driver.find_or_import_keypair_by_key_material('thepublickey'),
+                          {'keyName': 'thekeyname', 'keyFingerprint': 'thefingerprint'})
+
+        cloud_driver.connection.create_key_pair.assert_called_with('thecomment-thefingerprint', 'thepublickey')
+
+        get_pubkey_comment.assert_called_with('thepublickey', default='unnamed')
