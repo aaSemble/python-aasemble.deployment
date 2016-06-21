@@ -12,12 +12,15 @@
 #   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
+import logging
 import re
 import string
 
 import yaml
 
 from aasemble.deployment import exceptions
+
+LOG = logging.getLogger(__name__)
 
 
 class FakeResourceRecorder(object):  # pragma: no cover
@@ -51,9 +54,27 @@ def parse_time(time_string):
     return count * multiplier
 
 
+class TemplateWithDefaults(string.Template):
+    idpattern = '[_a-z][_a-z0-9]*(:-.*)?'
+
+
+class defaultdict(dict):
+    def __init__(self, default=None, *args):
+        self.default = default
+        super(defaultdict, self).__init__(*args)
+
+    def __getitem__(self, key):
+        if ':-' in key:
+            key, default = key.split(':-', 1)
+        else:
+            default = self.default()
+
+        return super(defaultdict, self).get(key, default)
+
+
 def interpolate(s, d):
     if s is None:
         return None
     if d is None:
         d = {}
-    return string.Template(s).substitute(**d)
+    return TemplateWithDefaults(s).substitute(defaultdict(str, d))

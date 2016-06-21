@@ -1,9 +1,11 @@
+import json
 import unittest
 
 import mock
 
 from testfixtures import log_capture
 
+import aasemble.client
 from aasemble.deployment.cloud import base, models
 
 
@@ -11,6 +13,10 @@ class CloudDriverTests(unittest.TestCase):
     def setUp(self):
         super(CloudDriverTests, self).setUp()
         self.driver = base.CloudDriver()
+
+    def test_init_sets_cluster(self):
+        driver = base.CloudDriver(cluster='https://example.com/testcluster')
+        self.assertIs(type(driver.cluster), aasemble.client.Cluster)
 
     @mock.patch('aasemble.deployment.cloud.base.get_driver')
     @log_capture()
@@ -123,12 +129,31 @@ class CloudDriverTests(unittest.TestCase):
         self.assertTrue(mock.sentinel.node1.converted)
         self.assertTrue(mock.sentinel.node2.converted)
 
+    def test_update_cluster(self):
+        self.collection = models.Collection()
+
+        class TestDriver(base.CloudDriver):
+            def cluster_json(selff, collection):
+                self.assertEquals(collection, self.collection)
+                return '"thejson"'
+
+
+        driver = TestDriver()
+        driver.cluster = mock.MagicMock()
+        driver.update_cluster(self.collection)
+        driver.cluster.update.assert_called_with(json='"thejson"')
+        
+
     def test_apply_resources(self):
         self.created_nodes = []
         self.created_security_groups = []
         self.created_security_group_rules = []
+        self.updated_cluster = False
 
         class TestDriver(base.CloudDriver):
+            def update_cluster(selff, collection):
+                self.updated_cluster = True
+
             def create_node(selff, node):
                 self.created_nodes += [node]
 
@@ -155,14 +180,7 @@ class CloudDriverTests(unittest.TestCase):
         self.assertIn(mock.sentinel.sg2, self.created_security_groups)
         self.assertIn(mock.sentinel.sgr1, self.created_security_group_rules)
         self.assertIn(mock.sentinel.sgr2, self.created_security_group_rules)
-
-    def _test_find_or_import_keypair_by_key_material(self):
-        class TestDriver(base.CloudDriver):
-            def get_fingerprint(self, pubkey):
-                return 'thefingerprint'
-
-        cloud_driver = TestDriver()
-        cloud_driver.find_or_import_keypair_by_key_material('thepubkey')
+        self.assertTrue(self.updated_cluster)
 
     def test_get_resource_by_attr(self):
         class TestClass(object):
@@ -248,3 +266,16 @@ class CloudDriverTests(unittest.TestCase):
         cloud_driver.connection.create_key_pair.assert_called_with('thecomment-thefingerprint', 'thepublickey')
 
         get_pubkey_comment.assert_called_with('thepublickey', default='unnamed')
+
+    def test_cluster_json(self):
+        self.collection = models.Collection()
+
+        class TestDriver(base.CloudDriver):
+            def cluster_data(selff, collection):
+                self.assertEqual(collection, self.collection)
+
+                return {'foo': ['bar', 'baz']}
+
+        driver = TestDriver()
+
+        self.assertEqual(json.loads(driver.cluster_json(self.collection)), {'foo': ['bar', 'baz']})

@@ -193,3 +193,18 @@ class DigitalOceanDriverTests(unittest.TestCase):
         kwargs = {}
         self.cloud_driver._add_script_info(node, kwargs)
         self.assertEqual(kwargs, {'ex_user_data': 'foobar'})
+
+    @mock.patch('aasemble.deployment.cloud.digitalocean.get_pubkey_openssh_fingerprint')
+    def test_get_fingerprint(self, get_pubkey_openssh_fingerprint):
+        rv = self.cloud_driver.get_fingerprint('pubkey')
+        get_pubkey_openssh_fingerprint.assert_called_with('pubkey')
+        self.assertEqual(rv, get_pubkey_openssh_fingerprint.return_value)
+
+    def test_cluster_data(self):
+        collection = cloud_models.Collection()
+        collection.urls.append(cloud_models.URLConfStatic(hostname='example.com', path='/foo/bar', local_path='/data'))
+        collection.urls.append(cloud_models.URLConfBackend(hostname='example.com', path='/foo/bar', destination='somebackend/somepath'))
+        self.assertEqual(self.cloud_driver.cluster_data(collection),
+                         {'proxyconf': {'backends': ['somebackend'],
+                                        'domains': {'example.com': {'/foo/bar': {'destination': 'somebackend/somepath',
+                                                                                 'type': 'backend'}}}}})

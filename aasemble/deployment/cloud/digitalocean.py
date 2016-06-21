@@ -32,7 +32,7 @@ class DigitalOceanDriver(CloudDriver):
     def _get_driver_args_and_kwargs(self):
         return ((self.api_key,), {'api_version': 'v2'})
 
-    def get_namespace(self, node):
+    def get_namespace(self, node):  # pragma: nocover
         return None
 
     def _is_node_relevant(self, node):
@@ -82,7 +82,7 @@ class DigitalOceanDriver(CloudDriver):
 
         node.private = self.connection.create_node(**kwargs)
 
-        LOG.info('Launced node: %s %r' % (node.name, kwargs))
+        LOG.info('Launched node: %s' % (node.name,))
 
     def _add_key_pair_info(self, kwargs):
         if self.ssh_key_file:
@@ -95,14 +95,29 @@ class DigitalOceanDriver(CloudDriver):
         if node.script is not None:
             kwargs['ex_user_data'] = node.script
 
-    def create_security_group(self, security_group):
+    def create_security_group(self, security_group):  # pragma: nocover
         pass
 
-    def create_security_group_rule(self, security_group_rule):
+    def create_security_group_rule(self, security_group_rule):  # pragma: nocover
         pass
-
-    def _block_device_mappings(self, node):
-        return {'DeviceName': '/dev/sda1', 'Ebs.VolumeSize': node.disk}
 
     def get_fingerprint(self, pubkey):
         return get_pubkey_openssh_fingerprint(pubkey)
+
+    def cluster_data(self, collection):
+        data = {}
+        proxyconf = {}
+        domains = {}
+        backends = set()
+        for url in collection.urls:
+            if url.hostname not in domains:
+                domains[url.hostname] = {}
+
+            if type(url) == cloud_models.URLConfBackend:
+                domains[url.hostname][url.path] = {'type': 'backend',
+                                                   'destination': url.destination}
+                backends.add(url.destination.split('/')[0])
+        proxyconf['domains'] = domains
+        proxyconf['backends'] = list(backends)
+        data['proxyconf'] = proxyconf
+        return data
