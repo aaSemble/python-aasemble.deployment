@@ -1,6 +1,7 @@
 import logging
 
 import aasemble.deployment.cloud.models as cloud_models
+from aasemble.deployment.exceptions import UnknownURLType
 from aasemble.deployment.utils import interpolate, load_yaml
 
 LOG = logging.getLogger(__name__)
@@ -9,6 +10,9 @@ LOG = logging.getLogger(__name__)
 def load(fpath, substitutions=None):
     data = load_yaml(fpath)[0]
     collection = cloud_models.Collection()
+
+    for urlconf in build_urls(data, substitutions):
+        collection.urls.append(urlconf)
 
     for node in build_nodes(data, substitutions):
         collection.nodes.add(node)
@@ -23,6 +27,25 @@ def load(fpath, substitutions=None):
 
     collection.connect()
     return collection
+
+
+def build_urls(data, substitutions=None):
+    urls = []
+    for url in data.get('urls', []):
+        if url['type'] == 'static':
+            urls.append(cloud_models.URLConfStatic(hostname=interpolate(url['hostname'], substitutions),
+                                                   path=url['path'],
+                                                   local_path=url['local_path']))
+            LOG.info('Loaded static URL %s%s from stack' % (url['hostname'], url['path']))
+        elif url['type'] == 'backend':
+            urls.append(cloud_models.URLConfBackend(hostname=interpolate(url['hostname'], substitutions),
+                                                    path=url['path'],
+                                                    destination=url['destination']))
+            LOG.info('Loaded backend URL %s%s from stack' % (url['hostname'], url['path']))
+        else:
+            raise UnknownURLType(url['type'])
+
+    return urls
 
 
 def build_nodes(data, substitutions=None):

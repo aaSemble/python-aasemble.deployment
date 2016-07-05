@@ -18,6 +18,10 @@ class AasembleDeploymentException(Exception):
     pass
 
 
+class UnknownURLType(AasembleDeploymentException):
+    pass
+
+
 class InvalidTimeException(AasembleDeploymentException):
     pass
 

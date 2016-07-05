@@ -71,8 +71,32 @@ class UtilsTests(unittest.TestCase):
     def test_interpolate_escape(self):
         self.assertEqual(utils.interpolate('Hello, $$who!', {'who': 'world'}), "Hello, $who!")
 
-    def test_interpolate_raises_on_unset_variable(self):
-        self.assertRaises(KeyError, utils.interpolate, 'Hello, $who!', {})
+    def test_interpolate_replaces_unset_variable_with_empty_string(self):
+        self.assertEquals(utils.interpolate('Hello, $who!', {}), 'Hello, !')
+
+    def test_interpolate_replaces_unset_variable_with_a_default_with_that_default(self):
+        self.assertEquals(utils.interpolate('Hello, ${who:-someone}!', {}), 'Hello, someone!')
+
+    def test_interpolate_replaces_variable_with_a_default_with_that_replacement(self):
+        self.assertEquals(utils.interpolate('Hello, ${who:-someone}!', {'who': 'world'}), 'Hello, world!')
 
     def test_interpolate_returns_None_when_s_is_None(self):
         self.assertEqual(utils.interpolate(None, {'who': 'world'}), None)
+
+    def test_defaultdict_returns_set_value(self):
+        d = utils.defaultdict(lambda: 'defvalue')
+        d['foo'] = 'bar'
+        self.assertEqual(d['foo'], 'bar')
+
+    def test_defaultdict_returns_set_value_even_when_given_another_default(self):
+        d = utils.defaultdict(lambda: 'defvalue')
+        d['foo'] = 'bar'
+        self.assertEqual(d['foo:-baz'], 'bar')
+
+    def test_defaultdict_returns_default_value(self):
+        d = utils.defaultdict(lambda: 'defvalue')
+        self.assertEqual(d['foo'], 'defvalue')
+
+    def test_defaultdict_returns_default_specific_value(self):
+        d = utils.defaultdict(lambda: 'defvalue')
+        self.assertEqual(d['foo:-bar'], 'bar')

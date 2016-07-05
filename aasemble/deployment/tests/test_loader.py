@@ -72,3 +72,19 @@ class ParserTestCase(unittest.TestCase):
                   ('aasemble.deployment.loader', 'INFO', 'Loaded node webapp2 from stack'),
                   ('aasemble.deployment.loader', 'INFO', 'Loaded security group webapp from stack'),
                   ('aasemble.deployment.loader', 'INFO', 'Loaded security group rule from stack: tcp: 443-443'))
+
+    @log_capture()
+    def test_with_urls(self, log):
+        collection = loader.load(self._get_full_path_for_test_data('with_urls.yaml'),
+                                 substitutions={'domain': 'example.com'})
+
+        self.assertIn(cloud_models.URLConfStatic(hostname='example.com', path='/', local_path='www'), collection.urls)
+        self.assertIn(cloud_models.URLConfBackend(hostname='example.com', path='/api', destination='webapp/api'), collection.urls)
+
+        self.assertIn(cloud_models.Node(name='webapp', flavor='webapp', image='trusty', disk=10, networks=[]), collection.nodes)
+
+        self.assertEqual(len(collection.nodes), 1)
+        self.assertEqual(len(collection.urls), 2)
+        log.check(('aasemble.deployment.loader', 'INFO', 'Loaded static URL ${domain}/ from stack'),
+                  ('aasemble.deployment.loader', 'INFO', 'Loaded backend URL ${domain}/api from stack'),
+                  ('aasemble.deployment.loader', 'INFO', 'Loaded node webapp from stack'))

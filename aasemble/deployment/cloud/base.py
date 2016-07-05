@@ -1,3 +1,4 @@
+import json
 import logging
 import os.path
 import threading
@@ -6,6 +7,7 @@ from multiprocessing.pool import ThreadPool
 from libcloud.compute.providers import get_driver
 from libcloud.utils.publickey import get_pubkey_comment
 
+import aasemble.client
 import aasemble.deployment.cloud.models as cloud_models
 
 LOG = logging.getLogger(__name__)
@@ -13,11 +15,12 @@ THREADS = 10  # These are really, really lightweight
 
 
 class CloudDriver(object):
-    def __init__(self, namespace=None, mappings=None, pool=None):
+    def __init__(self, namespace=None, mappings=None, pool=None, cluster=None):
         self.mappings = mappings or {}
         self.pool = pool or ThreadPool(THREADS)
         self.secgroups = {}
         self.namespace = namespace
+        self.cluster = cluster and aasemble.client.Cluster(cluster) or None
         self.locals = threading.local()
 
     @property
@@ -72,7 +75,12 @@ class CloudDriver(object):
     def apply_mappings(self, obj_type, name):
         return self.mappings.get(obj_type, {}).get(name, name)
 
+    def update_cluster(self, collection):
+        if self.cluster:
+            self.cluster.update(json=self.cluster_json(collection))
+
     def apply_resources(self, collection):
+        self.update_cluster(collection)
         self.pool.map(self.create_security_group, collection.security_groups)
         self.pool.map(self.create_node, collection.nodes)
         self.pool.map(self.create_security_group_rule, collection.security_group_rules)
@@ -106,3 +114,9 @@ class CloudDriver(object):
                   'keyFingerprint': kp.fingerprint}
 
         return result
+
+    def cluster_json(self, collection):
+        return json.dumps(self.cluster_data(collection))
+
+    def cluster_data(self, collection):
+        return None  # pragma: nocover

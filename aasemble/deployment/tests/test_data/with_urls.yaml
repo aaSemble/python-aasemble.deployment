@@ -1,0 +1,14 @@
+urls:
+  - hostname: ${domain}
+    path: /
+    type: static
+    local_path: www
+  - hostname: ${domain}
+    path: /api
+    type: backend
+    destination: webapp/api
+nodes:
+  webapp:
+    flavor: webapp
+    image: trusty
+    disk: 10

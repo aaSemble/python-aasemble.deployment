@@ -2,6 +2,7 @@ import unittest
 
 import mock
 
+import aasemble.client
 import aasemble.deployment.cli
 import aasemble.deployment.cloud.base
 import aasemble.deployment.cloud.models as cloud_models
@@ -15,9 +16,15 @@ class CliTestCase(unittest.TestCase):
 
     @mock.patch('aasemble.deployment.cli.load_cloud_config')
     @mock.patch('aasemble.deployment.cli.loader')
-    def _test_apply(self, assume_empty, loader, load_cloud_config):
+    @mock.patch('aasemble.deployment.cli.handle_cluster_opts')
+    @mock.patch('aasemble.client')
+    def _test_apply(self, assume_empty, client, handle_cluster_opts, loader, load_cloud_config):
+        client.AasembleClient.side_effect = Exception('should not invoke the aaSemble client')
+
         options = mock.MagicMock()
         options.assume_empty = assume_empty
+        options.new_cluster = False
+        options.cluster = False
         options.threads = 1
 
         resources = loader.load.return_value
@@ -42,6 +49,7 @@ class CliTestCase(unittest.TestCase):
             expected_resources = resources - detect_resources.return_value
 
         apply_resources.assert_called_with(expected_resources)
+        handle_cluster_opts.assert_called_with(options, {})
 
     def test_apply_no_assume_empty(self):
         self._test_apply(False)
@@ -102,3 +110,37 @@ class CliTestCase(unittest.TestCase):
                                                image='someimage', networks=[], disk=10,
                                                private=GCENode('10.0.0.1')))
         self.assertEquals(aasemble.deployment.cli.format_collection(collection), "Nodes:\n  testnode: ['10.0.0.1']\n")
+
+    def test_handle_cluster_opts_no_args(self):
+        options = mock.MagicMock()
+        options.new_cluster = None
+        options.cluster = None
+        substitutions = {}
+        cluster = aasemble.deployment.cli.handle_cluster_opts(options, substitutions)
+        self.assertEqual(cluster, None)
+        self.assertEqual(substitutions, {})
+
+    @mock.patch('aasemble.deployment.cli.client')
+    def test_handle_cluster_opts_new_cluster(self, client):
+        url = 'https://example.com/api/v4/clusters/8c45f2a1-02ef-4225-9e27-d5f796431b84/'
+        client.AasembleClient().clusters.create.return_value = aasemble.client.Cluster(url=url)
+
+        options = mock.MagicMock()
+        options.new_cluster = True
+        options.cluster = None
+        substitutions = {}
+        cluster = aasemble.deployment.cli.handle_cluster_opts(options, substitutions)
+        self.assertEqual(cluster, url)
+        self.assertEqual(substitutions, {'cluster': url})
+
+    def test_handle_cluster_opts_cluster_url(self):
+        url = 'https://example.com/api/v4/clusters/8c45f2a1-02ef-4225-9e27-d5f796431b83/'
+        options = mock.MagicMock()
+        options.new_cluster = False
+        options.cluster = url
+        substitutions = {}
+
+        cluster = aasemble.deployment.cli.handle_cluster_opts(options, substitutions)
+
+        self.assertEqual(cluster, url)
+        self.assertEqual(substitutions, {'cluster': url})

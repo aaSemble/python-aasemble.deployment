@@ -1,3 +1,8 @@
+urls:
+  - hostname: ${domain:-example.com}
+    path: /
+    type: backend
+    destination: www
 nodes:
   lb:
     flavor: small
@@ -9,11 +14,9 @@ nodes:
       - consul
     script: |
       #!/bin/bash -x
-      curl https://aasemble.com/installer/current/install.sh | CLUSTER=${cluster} bash
-      apt-get install -y haproxy
-      wget -O /etc/haproxy/haproxy.cfg.tmpl https://raw.githubusercontent.com/aaSemble/python-aasemble.deployment/master/examples/simple/haproxy.cfg.tmpl
-      sed -i -e 's/ENABLED=0/ENABLED=1/g' /etc/default/haproxy
-      consul-template -template "/etc/haproxy/haproxy.cfg.tmpl:/etc/haproxy/haproxy.cfg:/etc/init.d/haproxy reload"
+      INSTALLER_URL="${installer_url:-https://aasemble.com/installer/current/install.sh}"
+      curl $${INSTALLER_URL} | CLUSTER=${cluster} INSTALL_DOCKER=1 bash -x
+      docker run -e CLUSTER=${cluster} --name aasembleproxy --restart=always -p 80:80 -d aasemble/proxy:alpine
   web:
     count: 3
     flavor: small
@@ -24,11 +27,39 @@ nodes:
       - consul
     script: |
       #!/bin/bash -x
-      curl https://aasemble.com/installer/current/install.sh | CLUSTER=${cluster} NUM_SERVERS=3 SERVER=1 bash
-      apt-get install -y nginx
+      INSTALLER_URL="${installer_url:-https://aasemble.com/installer/current/install.sh}"
+      curl $${INSTALLER_URL} | CLUSTER="${cluster}" NUM_SERVERS=3 SERVER=1 bash -x
       wget -O /etc/consul.d/www.json https://raw.githubusercontent.com/aaSemble/python-aasemble.deployment/master/examples/simple/www.json
       consul reload
-      hostname > /usr/share/nginx/html/hostname.txt
+      apt-get install -y python-virtualenv git python-pip libmysqlclient-dev python-dev
+      virtualenv /srv/venv
+      . /srv/venv/bin/activate
+      pip install git+https://github.com/aaSemble/webapp-example gunicorn
+      while ! DATABASE_URL=mysql://testuser:testpassword@mysql.service.consul/testdb DJANGO_SETTINGS_MODULE=aasemble_webapp_example.settings consul lock django-migrate django-admin migrate
+      do
+          sleep 2
+      done
+      DATABASE_URL=mysql://testuser:testpassword@mysql.service.consul/testdb gunicorn aasemble_webapp_example.wsgi -b 0.0.0.0:80
+  db:
+    flavor: db
+    image: trusty
+    disk: 10
+    security_groups:
+      - db
+      - consul
+    script: |
+      #!/bin/bash -x
+      INSTALLER_URL="${installer_url:-https://aasemble.com/installer/current/install.sh}"
+      curl $${INSTALLER_URL} | CLUSTER="${cluster}" bash -x
+      wget -O /etc/consul.d/mysql.json https://raw.githubusercontent.com/aaSemble/python-aasemble.deployment/master/examples/simple/mysql.json
+      consul reload
+      DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server
+      sed -e 's/bind-address.*/bind-address = 0.0.0.0/g' -i /etc/mysql/my.cnf
+      /etc/init.d/mysql restart
+      mysql -u root <<EOF
+      CREATE DATABASE IF NOT EXISTS testdb;
+      GRANT ALL ON testdb.* TO 'testuser'@'%' IDENTIFIED BY 'testpassword';
+      EOF
 security_groups:
   www:
   - cidr: 0.0.0.0/0
@@ -54,3 +85,8 @@ security_groups:
     from_port: 8300
     to_port: 8302
     protocol: udp
+  db:
+  - source_group: wwwbackend
+    from_port: 3306
+    to_port: 3306
+    protocol: tcp

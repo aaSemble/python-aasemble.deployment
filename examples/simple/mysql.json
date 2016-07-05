@@ -1,11 +1,11 @@
 {
   "service": {
-    "name": "www",
-    "port": 80,
+    "name": "mysql",
+    "port": 3306,
     "checks": [{
         "id": "www",
-        "name": "HTTP on port 80",
-        "http": "http://localhost:80/ping/",
+        "name": "mysql on port 3306",
+        "tcp": "localhost:3306",
         "interval": "5s",
         "timeout": "1s"
       }

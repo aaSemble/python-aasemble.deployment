@@ -36,22 +36,25 @@ class NamedSet(dict):
 
 
 class Collection(object):
-    def __init__(self, nodes=None, security_groups=None, security_group_rules=None):
+    def __init__(self, nodes=None, security_groups=None, security_group_rules=None, urls=None):
         self.nodes = nodes or NamedSet()
         self.security_groups = security_groups or NamedSet()
         self.security_group_rules = security_group_rules or set()
+        self.urls = urls or []
 
     def __sub__(self, other):
         diff = self.__class__()
         diff.nodes = self.nodes - other.nodes
         diff.security_groups = self.security_groups - other.security_groups
         diff.security_group_rules = self.security_group_rules - other.security_group_rules
+        diff.urls = self.urls
         return diff
 
     def __eq__(self, other):
         return (self.nodes == other.nodes and
                 self.security_groups == other.security_groups and
-                self.security_group_rules == other.security_group_rules)
+                self.security_group_rules == other.security_group_rules,
+                self.urls == other.urls)
 
     def connect(self):
         for node in self.nodes:
@@ -61,7 +64,7 @@ class Collection(object):
 
 class CloudModel(object):
     def __eq__(self, other):
-        return all([getattr(self, attr) == getattr(other, attr) for attr in self.id_attrs])
+        return all([getattr(self, attr, False) == getattr(other, attr, False) for attr in self.id_attrs])
 
     def __hash__(self):
         retval = 0
@@ -103,6 +106,34 @@ class Node(CloudModel):
 
 class Network(object):
     pass
+
+
+class URLConf(CloudModel):
+    pass
+
+
+class URLConfStatic(URLConf):
+    def __init__(self, hostname, path, local_path):
+        self.hostname = hostname
+        self.path = path
+        self.local_path = local_path
+
+    def __repr__(self):  # pragma: no cover
+        return "<URLConfStatic hostname='%s', path='%s', local_path='%s'>" % (self.hostname, self.path, self.local_path)
+
+    id_attrs = ('hostname', 'path', 'local_path')
+
+
+class URLConfBackend(URLConf):
+    def __init__(self, hostname, path, destination):
+        self.hostname = hostname
+        self.path = path
+        self.destination = destination
+
+    def __repr__(self):  # pragma: no cover
+        return "<URLConfBackend hostname='%s', path='%s', destination='%s'>" % (self.hostname, self.path, self.destination)
+
+    id_attrs = ('hostname', 'path', 'destination')
 
 
 class SecurityGroup(CloudModel):
