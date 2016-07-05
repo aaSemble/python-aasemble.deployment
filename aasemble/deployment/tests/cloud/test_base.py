@@ -137,12 +137,10 @@ class CloudDriverTests(unittest.TestCase):
                 self.assertEquals(collection, self.collection)
                 return '"thejson"'
 
-
         driver = TestDriver()
         driver.cluster = mock.MagicMock()
         driver.update_cluster(self.collection)
         driver.cluster.update.assert_called_with(json='"thejson"')
-        
 
     def test_apply_resources(self):
         self.created_nodes = []
