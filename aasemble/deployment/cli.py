@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import sys
 
@@ -70,7 +71,11 @@ def detect(options):
                                       **cloud_driver_kwargs)
 
     resources = cloud_driver.detect_resources()
-    print(format_collection(resources))
+
+    if getattr(options, 'json', False):
+        print(json.dumps(resources.as_dict()))
+    else:
+        print(format_collection(resources))
 
     return cloud_driver, resources
 
@@ -107,6 +112,7 @@ def main(args=sys.argv[1:]):
     detect_parser.set_defaults(func=detect)
     detect_parser.add_argument('cloud', help='Cloud config')
     detect_parser.add_argument('--namespace', help='Namespace for resources')
+    detect_parser.add_argument('--json', action='store_true', help='Output as JSON')
 
     clean_parser = subparsers.add_parser('clean', help='Clean current resources')
     clean_parser.set_defaults(func=clean)

@@ -63,6 +63,12 @@ class Collection(object):
             for security_group_name in node.security_group_names:
                 node.security_groups.add(self.security_groups[security_group_name])
 
+    def as_dict(self):
+        return {'nodes': [node.as_dict() for node in self.nodes],
+                'security_groups': [sg.as_dict() for sg in self.security_groups],
+                'security_group_rules': [sgr.as_dict() for sgr in self.security_group_rules],
+                'urls': [url.as_dict() for url in self.urls]}
+
 
 class CloudModel(object):
     def __eq__(self, other):
@@ -105,6 +111,15 @@ class Node(CloudModel):
     def __hash__(self):
         return super(Node, self).__hash__() ^ hash(stringify(self.security_groups))
 
+    def as_dict(self):
+        return {'name': self.name,
+                'flavor': self.flavor,
+                'image': self.image,
+                'disk': self.disk,
+                'security_groups': [sg.name for sg in self.security_groups],
+                'script': self.script,
+                'public_ips': getattr(getattr(self, 'private', None), 'public_ips', [])}
+
 
 class Network(object):
     pass
@@ -125,6 +140,10 @@ class URLConfStatic(URLConf):
 
     id_attrs = ('hostname', 'path', 'local_path')
 
+    def as_dict(self):
+        return {'domain': self.hostname,
+                'path': self.path}
+
 
 class URLConfBackend(URLConf):
     def __init__(self, hostname, path, destination):
@@ -137,6 +156,11 @@ class URLConfBackend(URLConf):
 
     id_attrs = ('hostname', 'path', 'destination')
 
+    def as_dict(self):
+        return {'domain': self.hostname,
+                'path': self.path,
+                'destination': self.destination}
+
 
 class SecurityGroup(CloudModel):
     def __init__(self, name):
@@ -146,6 +170,9 @@ class SecurityGroup(CloudModel):
         return "<SecurityGroup name='%s'>" % (self.name,)
 
     id_attrs = ('name',)
+
+    def as_dict(self):
+        return {'name': self.name}
 
 
 class SecurityGroupRule(CloudModel):
@@ -176,6 +203,21 @@ class SecurityGroupRule(CloudModel):
         return rv
 
     id_attrs = ('security_group', 'source_ip', 'source_group', 'from_port', 'to_port', 'protocol')
+
+    def as_dict(self):
+        d = {'security_group': self.security_group.name,
+             'protocol': self.protocol}
+
+        if self.source_ip:
+            d['source_ip'] = self.source_ip
+        else:
+            d['source_group'] = self.source_group
+
+        if self.from_port:
+            d['from_port'] = self.from_port
+            d['to_port'] = self.to_port
+
+        return d
 
 
 def stringify(security_groups):
