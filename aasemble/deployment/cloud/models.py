@@ -41,6 +41,7 @@ class Collection(object):
         self.security_groups = security_groups or NamedSet()
         self.security_group_rules = security_group_rules or set()
         self.urls = urls or []
+        self.original_collection = None
 
     def __sub__(self, other):
         diff = self.__class__()
@@ -48,6 +49,7 @@ class Collection(object):
         diff.security_groups = self.security_groups - other.security_groups
         diff.security_group_rules = self.security_group_rules - other.security_group_rules
         diff.urls = self.urls
+        diff.original_collection = self
         return diff
 
     def __eq__(self, other):

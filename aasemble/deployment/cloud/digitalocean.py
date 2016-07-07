@@ -17,6 +17,7 @@ class DigitalOceanDriver(CloudDriver):
         self.location = kwargs.pop('location')
         self.api_key = kwargs.pop('api_key')
         self.ssh_key_file = kwargs.pop('ssh_key_file', None)
+        self._size_cache = {}
         super(DigitalOceanDriver, self).__init__(*args, **kwargs)
 
     @classmethod
@@ -41,7 +42,9 @@ class DigitalOceanDriver(CloudDriver):
         return super(DigitalOceanDriver, self)._is_node_relevant(node)
 
     def get_size(self, size_name):
-        return self._get_resource_by_attr(self.connection.list_sizes, 'name', size_name)
+        if size_name not in self._size_cache:
+            self._size_cache[size_name] = self._get_resource_by_attr(self.connection.list_sizes, 'name', size_name)
+        return self._size_cache[size_name]
 
     def _aasemble_node_from_provider_node(self, donode):
         node = cloud_models.Node(name=donode.name,
@@ -107,8 +110,13 @@ class DigitalOceanDriver(CloudDriver):
     def cluster_data(self, collection):
         data = {}
         proxyconf = {}
+        fwconf = {'security_groups': {}}
         domains = {}
         backends = set()
+
+        if collection.original_collection:
+            collection = collection.original_collection
+
         for url in collection.urls:
             if url.hostname not in domains:
                 domains[url.hostname] = {}
@@ -117,7 +125,37 @@ class DigitalOceanDriver(CloudDriver):
                 domains[url.hostname][url.path] = {'type': 'backend',
                                                    'destination': url.destination}
                 backends.add(url.destination.split('/')[0])
+
+        for node in collection.nodes:
+            for sg in node.security_groups:
+                if sg.name not in fwconf['security_groups']:
+                    fwconf['security_groups'][sg.name] = {'nodes': [],
+                                                          'rules': []}
+                fwconf['security_groups'][sg.name]['nodes'].append(node.name)
+
+        for sgr in collection.security_group_rules:
+            rule = {}
+
+            if sgr.source_ip:
+                rule['source_ip'] = sgr.source_ip
+            elif sgr.source_group:
+                rule['source_group'] = sgr.source_group
+
+            if sgr.from_port and sgr.to_port:
+                rule['from_port'] = sgr.from_port
+                rule['to_port'] = sgr.to_port
+
+            if sgr.protocol:
+                rule['protocol'] = sgr.protocol
+
+            fwconf['security_groups'][sgr.security_group.name]['rules'].append(rule)
+
+        for sg in fwconf['security_groups']:
+            fwconf['security_groups'][sg]['nodes'].sort()
+            fwconf['security_groups'][sg]['rules'].sort()
+
         proxyconf['domains'] = domains
         proxyconf['backends'] = list(backends)
         data['proxyconf'] = proxyconf
+        data['fwconf'] = fwconf
         return data

@@ -202,9 +202,62 @@ class DigitalOceanDriverTests(unittest.TestCase):
 
     def test_cluster_data(self):
         collection = cloud_models.Collection()
+
+        lb = cloud_models.Node(name='lb', image='trusty', flavor='512mb', disk=27, networks=[])
+        web1 = cloud_models.Node(name='web1', image='trusty', flavor='512mb', disk=27, networks=[])
+        web2 = cloud_models.Node(name='web2', image='trusty', flavor='512mb', disk=27, networks=[])
+        db = cloud_models.Node(name='db', image='trusty', flavor='512mb', disk=27, networks=[])
+
+        frontend_sg = cloud_models.SecurityGroup(name='frontend')
+        frontend_http_sgr = cloud_models.SecurityGroupRule(security_group=frontend_sg, source_ip='0.0.0.0/0', from_port=80, to_port=80, protocol='tcp')
+        frontend_https_sgr = cloud_models.SecurityGroupRule(security_group=frontend_sg, source_ip='0.0.0.0/0', from_port=443, to_port=443, protocol='tcp')
+        lb.security_groups.add(frontend_sg)
+
+        backend_sg = cloud_models.SecurityGroup(name='backend')
+        backend_http_sgr = cloud_models.SecurityGroupRule(security_group=backend_sg, source_group='frontend', from_port=80, to_port=80, protocol='tcp')
+        web1.security_groups.add(backend_sg)
+        web2.security_groups.add(backend_sg)
+
+        db_sg = cloud_models.SecurityGroup(name='mysql')
+        mysql_sgr = cloud_models.SecurityGroupRule(security_group=db_sg, source_group='backend', from_port=3306, to_port=3306, protocol='tcp')
+        db.security_groups.add(db_sg)
+
+        collection.nodes.add(lb)
+        collection.nodes.add(web1)
+        collection.nodes.add(web2)
+        collection.nodes.add(db)
+        collection.nodes.add(db)
+        collection.security_groups.add(frontend_sg)
+        collection.security_groups.add(backend_sg)
+        collection.security_groups.add(db_sg)
+        collection.security_group_rules.add(frontend_http_sgr)
+        collection.security_group_rules.add(frontend_https_sgr)
+        collection.security_group_rules.add(backend_http_sgr)
+        collection.security_group_rules.add(mysql_sgr)
+
         collection.urls.append(cloud_models.URLConfStatic(hostname='example.com', path='/foo/bar', local_path='/data'))
         collection.urls.append(cloud_models.URLConfBackend(hostname='example.com', path='/foo/bar', destination='somebackend/somepath'))
+        self.maxDiff = None
         self.assertEqual(self.cloud_driver.cluster_data(collection),
                          {'proxyconf': {'backends': ['somebackend'],
                                         'domains': {'example.com': {'/foo/bar': {'destination': 'somebackend/somepath',
-                                                                                 'type': 'backend'}}}}})
+                                                                                 'type': 'backend'}}}},
+                          'fwconf': {'security_groups': {'backend': {'nodes': ['web1', 'web2'],
+                                                                     'rules': [{'from_port': 80,
+                                                                                'protocol': 'tcp',
+                                                                                'source_group': 'frontend',
+                                                                                'to_port': 80}]},
+                                                         'frontend': {'nodes': ['lb'],
+                                                                      'rules': [{'from_port': 80,
+                                                                                 'protocol': 'tcp',
+                                                                                 'source_ip': '0.0.0.0/0',
+                                                                                 'to_port': 80},
+                                                                                {'from_port': 443,
+                                                                                 'protocol': 'tcp',
+                                                                                 'source_ip': '0.0.0.0/0',
+                                                                                 'to_port': 443}]},
+                                                         'mysql': {'nodes': ['db'],
+                                                                   'rules': [{'from_port': 3306,
+                                                                              'protocol': 'tcp',
+                                                                              'source_group': 'backend',
+                                                                              'to_port': 3306}]}}}})

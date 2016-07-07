@@ -14,9 +14,11 @@ nodes:
       - consul
     script: |
       #!/bin/bash -x
+      sed -e 's/mirrors.digitalocean.com/archive.ubuntu.com/g' -i /etc/apt/sources.list
       INSTALLER_URL="${installer_url:-https://aasemble.com/installer/current/install.sh}"
       curl $${INSTALLER_URL} | CLUSTER=${cluster} INSTALL_DOCKER=1 bash -x
-      docker run -e CLUSTER=${cluster} --name aasembleproxy --restart=always -p 80:80 -d aasemble/proxy:alpine
+      docker run --name aasembleproxy --restart=always --net=host -d aasemble/proxy:alpine
+      docker run --name fwcompiler --restart=always --net=host --privileged -d aasemble/fwmanager
   web:
     count: 3
     flavor: small
@@ -27,10 +29,12 @@ nodes:
       - consul
     script: |
       #!/bin/bash -x
+      sed -e 's/mirrors.digitalocean.com/archive.ubuntu.com/g' -i /etc/apt/sources.list
       INSTALLER_URL="${installer_url:-https://aasemble.com/installer/current/install.sh}"
-      curl $${INSTALLER_URL} | CLUSTER="${cluster}" NUM_SERVERS=3 SERVER=1 bash -x
+      curl $${INSTALLER_URL} | CLUSTER="${cluster}" NUM_SERVERS=3 SERVER=1 INSTALL_DOCKER=1 bash -x
       wget -O /etc/consul.d/www.json https://raw.githubusercontent.com/aaSemble/python-aasemble.deployment/master/examples/simple/www.json
       consul reload
+      docker run --name fwcompiler --restart=always --net=host --privileged -d aasemble/fwmanager
       apt-get install -y python-virtualenv git python-pip libmysqlclient-dev python-dev
       virtualenv /srv/venv
       . /srv/venv/bin/activate
@@ -49,8 +53,10 @@ nodes:
       - consul
     script: |
       #!/bin/bash -x
+      sed -e 's/mirrors.digitalocean.com/archive.ubuntu.com/g' -i /etc/apt/sources.list
       INSTALLER_URL="${installer_url:-https://aasemble.com/installer/current/install.sh}"
-      curl $${INSTALLER_URL} | CLUSTER="${cluster}" bash -x
+      curl $${INSTALLER_URL} | CLUSTER="${cluster}" INSTALL_DOCKER=1 bash -x
+      docker run --name fwcompiler --restart=always --net=host --privileged -d aasemble/fwmanager
       wget -O /etc/consul.d/mysql.json https://raw.githubusercontent.com/aaSemble/python-aasemble.deployment/master/examples/simple/mysql.json
       consul reload
       DEBIAN_FRONTEND=noninteractive apt-get install -y mysql-server
