@@ -26,6 +26,7 @@ class CliTestCase(unittest.TestCase):
         options.new_cluster = False
         options.cluster = False
         options.threads = 1
+        options.json = False
 
         resources = loader.load.return_value
 
@@ -61,6 +62,7 @@ class CliTestCase(unittest.TestCase):
     def test_detect(self, load_cloud_config):
         options = mock.MagicMock()
         options.threads = 1
+        options.json = False
         with mock.patch('aasemble.deployment.cloud.base.CloudDriver.detect_resources') as detect_resources:
             load_cloud_config.return_value = (aasemble.deployment.cloud.base.CloudDriver, {}, {})
 
@@ -73,6 +75,7 @@ class CliTestCase(unittest.TestCase):
     def test_clean(self, format_collection, load_cloud_config):
         options = mock.MagicMock()
         options.threads = 1
+        options.json = False
         with mock.patch.multiple('aasemble.deployment.cloud.base.CloudDriver',
                                  clean_resources=mock.DEFAULT,
                                  detect_resources=mock.DEFAULT) as values:

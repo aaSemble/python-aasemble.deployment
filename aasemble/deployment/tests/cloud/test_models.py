@@ -200,3 +200,47 @@ class CloudModelTests(unittest.TestCase):
         tc1 = self.TestClass(mock.sentinel.attr1, mock.sentinel.attr2, mock.sentinel.attr3)
         tc2 = self.TestClass(mock.sentinel.attr1, mock.sentinel.not_attr2, mock.sentinel.attr3)
         self.assertNotEqual(tc1, tc2)
+
+
+class NodeTests(unittest.TestCase):
+    def test_as_dict(self):
+        node = models.Node(name='nodename', image='someimage', flavor='someflavor', disk=27, networks=[])
+        self.assertEquals(node.as_dict(), {'disk': 27,
+                                           'flavor': 'someflavor',
+                                           'image': 'someimage',
+                                           'name': 'nodename',
+                                           'public_ips': [],
+                                           'script': None,
+                                           'security_groups': []})
+
+
+class SecurityGroupTests(unittest.TestCase):
+    def test_as_dict(self):
+        sg = models.SecurityGroup(name='sgname')
+        self.assertEquals(sg.as_dict(), {'name': 'sgname'})
+
+
+class SecurityGroupRulesTests(unittest.TestCase):
+    def test_as_dict(self):
+        sg = models.SecurityGroup(name='sgname')
+        sgr = models.SecurityGroupRule(security_group=sg, from_port=8000, to_port=8080, source_ip='1.2.3.4/32', protocol='tcp')
+        self.assertEquals(sgr.as_dict(), {'from_port': 8000,
+                                          'protocol': 'tcp',
+                                          'security_group': 'sgname',
+                                          'source_ip': '1.2.3.4/32',
+                                          'to_port': 8080})
+
+
+class URLConfStaticTests(unittest.TestCase):
+    def test_as_dict(self):
+        urlconf = models.URLConfStatic(hostname='example.com', path='/somewhere', local_path='foo/')
+        self.assertEquals(urlconf.as_dict(), {'domain': 'example.com',
+                                              'path': '/somewhere'})
+
+
+class URLConfBackendTests(unittest.TestCase):
+    def test_as_dict(self):
+        urlconf = models.URLConfBackend(hostname='example.com', path='/api', destination='www/foo')
+        self.assertEquals(urlconf.as_dict(), {'domain': 'example.com',
+                                              'path': '/api',
+                                              'destination': 'www/foo'})
