@@ -11,6 +11,8 @@ from aasemble.deployment.cloudconfigparser import load_cloud_config
 
 DEFAULT_THREADS = 10
 
+LOG = logging.getLogger(__name__)
+
 
 def extract_substitutions(substargs):
     d = {}
@@ -44,6 +46,7 @@ def apply(options):
     substitutions = extract_substitutions(options.substitutions)
 
     cluster = handle_cluster_opts(options, substitutions)
+    LOG.info('Cluster ID: %s', cluster)
 
     resources = loader.load(options.stack, substitutions)
     cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(options.cloud)
