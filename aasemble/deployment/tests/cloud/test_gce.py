@@ -94,20 +94,29 @@ class GCEDriverTestCase(unittest.TestCase):
 
     def _get_firewalls(self):
         class GCEFirewall(object):
-            def __init__(self, protocol, ports, tags):
+            def __init__(self, protocol, ports, tags, source_ip=None, source_group=None):
                 self.allowed = [{'IPProtocol': protocol, 'ports': [ports]}]
                 self.target_tags = tags
+                self.source_ranges = []
+                self.source_tags = []
 
-        fw1 = GCEFirewall('tcp', '22', None)
-        fw2 = GCEFirewall('tcp', '8000-8080', None)
-        fw3 = GCEFirewall('tcp', '443', ['webapp', 'dev'])
-        return fw1, fw2, fw3
+                if source_ip:
+                    self.source_ranges += [source_ip]
+
+                if source_group:
+                    self.source_tags += [source_group]
+
+        fw1 = GCEFirewall('tcp', '22', None, source_ip='0.0.0.0/0')
+        fw2 = GCEFirewall('tcp', '8000-8080', None, source_ip='0.0.0.0/0')
+        fw3 = GCEFirewall('tcp', '443', ['webapp', 'dev'], source_ip='0.0.0.0/0')
+        fw4 = GCEFirewall('tcp', '21', ['webapp'], source_group='frontend')
+        return fw1, fw2, fw3, fw4
 
     @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
     def test_detect_firewalls(self, connection):
-        fw1, fw2, fw3 = self._get_firewalls()
+        fw1, fw2, fw3, fw4 = self._get_firewalls()
 
-        connection.ex_list_firewalls.return_value = [fw1, fw2, fw3]
+        connection.ex_list_firewalls.return_value = [fw1, fw2, fw3, fw4]
         security_groups, security_group_rules = self.cloud_driver.detect_firewalls()
         self.assertIn(cloud_models.SecurityGroup(name='webapp'), security_groups)
         self.assertIn(cloud_models.SecurityGroup(name='dev'), security_groups)
@@ -135,6 +144,12 @@ class GCEDriverTestCase(unittest.TestCase):
                                                      source_ip='0.0.0.0/0',
                                                      from_port=8000,
                                                      to_port=8080,
+                                                     protocol='tcp'),
+                      security_group_rules)
+        self.assertIn(cloud_models.SecurityGroupRule(security_group=webapp,
+                                                     source_group='frontend',
+                                                     from_port=21,
+                                                     to_port=21,
                                                      protocol='tcp'),
                       security_group_rules)
 

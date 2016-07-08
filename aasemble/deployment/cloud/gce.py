@@ -91,12 +91,20 @@ class GCEDriver(CloudDriver):
                 for allowed in firewall.allowed:
                     from_port, to_port = self._parse_port_spec(allowed)
                     protocol = allowed['IPProtocol']
-                    security_group_rule = cloud_models.SecurityGroupRule(security_group=security_groups[tag],
-                                                                         source_ip='0.0.0.0/0',
-                                                                         from_port=from_port,
-                                                                         to_port=to_port,
-                                                                         protocol=protocol)
+
+                    kwargs = {'security_group': security_groups[tag],
+                              'from_port': from_port,
+                              'to_port': to_port,
+                              'protocol': protocol}
+
+                    if firewall.source_tags:
+                        kwargs['source_group'] = firewall.source_tags[0]
+                    else:
+                        kwargs['source_ip'] = firewall.source_ranges[0]
+
+                    security_group_rule = cloud_models.SecurityGroupRule(**kwargs)
                     security_group_rule.private = firewall
+
                     LOG.info('Detected security group rule for security group %s: %s: %d-%d' % (tag, protocol, from_port, to_port))
                     security_group_rule_set.add(security_group_rule)
 
