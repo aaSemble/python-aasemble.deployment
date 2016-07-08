@@ -61,7 +61,8 @@ class Collection(object):
     def connect(self):
         for node in self.nodes:
             for security_group_name in node.security_group_names:
-                node.security_groups.add(self.security_groups[security_group_name])
+                if security_group_name in self.security_groups.keys():
+                    node.security_groups.add(self.security_groups[security_group_name])
 
     def as_dict(self):
         return {'nodes': [node.as_dict() for node in self.nodes],
@@ -176,13 +177,14 @@ class SecurityGroup(CloudModel):
 
 
 class SecurityGroupRule(CloudModel):
-    def __init__(self, security_group, from_port, to_port, protocol, source_ip=None, source_group=None):
+    def __init__(self, security_group, from_port, to_port, protocol, source_ip=None, source_group=None, private=None):
         self.security_group = security_group
         self.source_ip = source_ip
         self.source_group = source_group
         self.from_port = from_port
         self.to_port = to_port
         self.protocol = protocol
+        self.private = private
 
     def __repr__(self):  # pragma: no cover
         rv = '<SecurityGroupRule '

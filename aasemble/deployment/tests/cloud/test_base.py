@@ -277,3 +277,16 @@ class CloudDriverTests(unittest.TestCase):
         driver = TestDriver()
 
         self.assertEqual(json.loads(driver.cluster_json(self.collection)), {'foo': ['bar', 'baz']})
+
+    def test_delete_security_group(self):
+        sg = models.SecurityGroup(name='webapp')
+        base.CloudDriver().delete_security_group(sg)
+
+    def test_delete_security_group_rule(self):
+        sg = models.SecurityGroup(name='webapp')
+        sgr = models.SecurityGroupRule(security_group=sg,
+                                       source_ip='0.0.0.0/0',
+                                       from_port=443,
+                                       to_port=443,
+                                       protocol='tcp')
+        base.CloudDriver().delete_security_group_rule(sgr)

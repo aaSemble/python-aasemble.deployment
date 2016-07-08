@@ -101,16 +101,8 @@ Create a gce.ini with the following contents:
     [images]
     trusty = ubuntu-1404-trusty-v20160516
 
-We create a new cluster on the aaSemble node tracker:
-
-    $ curl -X POST https://aasemble.com/api/devel/clusters/ -d ' ' -s | python -m json.tool
-    {
-        "nodes": "https://aasemble.com/api/devel/clusters/12345508-4395-42cb-98bf-5d8c60faba3e/nodes/",
-        "self": "https://aasemble.com/api/devel/clusters/12345508-4395-42cb-98bf-5d8c60faba3e/"
-    }
-
 We pass the cluster ID into the deployment tool:
 
-    $ aasemble apply gce.ini examples/simple/resources.yaml
+    $ aasemble apply --new-cluster gce.ini examples/simple/resources.yaml
 
 ...and you sit back and watch the magic happen.

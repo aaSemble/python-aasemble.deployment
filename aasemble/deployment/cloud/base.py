@@ -88,8 +88,16 @@ class CloudDriver(object):
     def delete_node(self, node):
         self.connection.destroy_node(node.private)
 
+    def delete_security_group(self, security_group):
+        pass
+
+    def delete_security_group_rule(self, security_group_rule):
+        pass
+
     def clean_resources(self, collection):
         self.pool.map(self.delete_node, collection.nodes)
+        self.pool.map(self.delete_security_group_rule, collection.security_group_rules)
+        self.pool.map(self.delete_security_group, collection.security_groups)
 
     def expand_path(self, path):
         return os.path.expanduser(path)

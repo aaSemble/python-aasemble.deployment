@@ -247,11 +247,29 @@ class GCEDriverTestCase(unittest.TestCase):
                                                ex_tags=['webapp'])
 
     @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
-    def test_clean_resources(self, connection):
-        collection = self._example_collection()
-        self.cloud_driver.clean_resources(collection)
-        connection.destroy_node.assert_any_call(mock.sentinel.webapp1priv)
-        connection.destroy_node.assert_any_call(mock.sentinel.webapp2priv)
+    def test_delete_node(self, connection):
+        webapp = cloud_models.Node(name='webapp',
+                                   image='trusty',
+                                   flavor='n1-standard-2',
+                                   disk=37,
+                                   networks=[],
+                                   security_groups=set(),
+                                   private=mock.sentinel.webapppriv)
+        self.cloud_driver.delete_node(webapp)
+        connection.destroy_node.assert_called_with(mock.sentinel.webapppriv)
+
+    @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
+    def test_delete_security_group_rule(self, connection):
+        sg = cloud_models.SecurityGroup(name='sg')
+        sgr = cloud_models.SecurityGroupRule(security_group=sg,
+                                             source_ip='1.2.3.4',
+                                             from_port=10,
+                                             to_port=20,
+                                             protocol='tcp',
+                                             private=mock.sentinel.sgrpriv)
+        self.cloud_driver.delete_security_group_rule(sgr)
+
+        connection.ex_destroy_firewall.assert_called_with(mock.sentinel.sgrpriv)
 
     @mock.patch('aasemble.deployment.cloud.gce.GCEDriver.connection')
     @mock.patch('aasemble.deployment.cloud.gce.GCEDriver._get_disk_type')
@@ -422,3 +440,13 @@ class GCEDriverTestCase(unittest.TestCase):
                                               protocol='tcp')
         self.assertEquals(self.cloud_driver._source_ranges(sgr1), ['1.2.3.4'])
         self.assertEquals(self.cloud_driver._source_ranges(sgr2), None)
+
+    def test_cluster_data(self):
+        collection = cloud_models.Collection()
+
+        collection.urls.append(cloud_models.URLConfStatic(hostname='example.com', path='/foo/bar', local_path='/data'))
+        collection.urls.append(cloud_models.URLConfBackend(hostname='example.com', path='/foo/bar', destination='somebackend/somepath'))
+        self.assertEqual(self.cloud_driver.cluster_data(collection),
+                         {'proxyconf': {'backends': ['somebackend'],
+                                        'domains': {'example.com': {'/foo/bar': {'destination': 'somebackend/somepath',
+                                                                                 'type': 'backend'}}}}})
