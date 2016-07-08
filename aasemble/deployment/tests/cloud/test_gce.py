@@ -440,3 +440,14 @@ class GCEDriverTestCase(unittest.TestCase):
                                               protocol='tcp')
         self.assertEquals(self.cloud_driver._source_ranges(sgr1), ['1.2.3.4'])
         self.assertEquals(self.cloud_driver._source_ranges(sgr2), None)
+
+
+    def test_cluster_data(self):
+        collection = cloud_models.Collection()
+
+        collection.urls.append(cloud_models.URLConfStatic(hostname='example.com', path='/foo/bar', local_path='/data'))
+        collection.urls.append(cloud_models.URLConfBackend(hostname='example.com', path='/foo/bar', destination='somebackend/somepath'))
+        self.assertEqual(self.cloud_driver.cluster_data(collection),
+                         {'proxyconf': {'backends': ['somebackend'],
+                                        'domains': {'example.com': {'/foo/bar': {'destination': 'somebackend/somepath',
+                                                                                 'type': 'backend'}}}}})
