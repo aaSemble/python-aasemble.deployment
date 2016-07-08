@@ -180,3 +180,26 @@ class AWSDriver(CloudDriver):
 
     def _block_device_mappings(self, node):
         return {'DeviceName': '/dev/sda1', 'Ebs.VolumeSize': node.disk}
+
+    def cluster_data(self, collection):
+        data = {}
+        proxyconf = {}
+        domains = {}
+        backends = set()
+
+        if collection.original_collection:
+            collection = collection.original_collection
+
+        for url in collection.urls:
+            if url.hostname not in domains:
+                domains[url.hostname] = {}
+
+            if type(url) == cloud_models.URLConfBackend:
+                domains[url.hostname][url.path] = {'type': 'backend',
+                                                   'destination': url.destination}
+                backends.add(url.destination.split('/')[0])
+
+        proxyconf['domains'] = domains
+        proxyconf['backends'] = list(backends)
+        data['proxyconf'] = proxyconf
+        return data
