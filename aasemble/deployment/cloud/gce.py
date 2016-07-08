@@ -151,7 +151,6 @@ class GCEDriver(CloudDriver):
 
             kwargs['ex_metadata'] = {'items': md_items}
 
-        print(kwargs)
         node.private = self.connection.create_node(**kwargs)
 
         LOG.info('Launced node: %s' % (node.name))
@@ -161,10 +160,7 @@ class GCEDriver(CloudDriver):
 
     def delete_security_group_rule(self, security_group_rule):
         LOG.info('Deleting firewall rule:%s' % (security_group_rule.private.name))
-        try:
-            self.connection.ex_destroy_firewall(security_group_rule.private)
-        except Exception as e:
-            print(e)
+        self.connection.ex_destroy_firewall(security_group_rule.private)
 
     def create_security_group_rule(self, security_group_rule):
         name = '%s-%s-%s-%s' % (security_group_rule.security_group.name,
