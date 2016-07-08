@@ -441,7 +441,6 @@ class GCEDriverTestCase(unittest.TestCase):
         self.assertEquals(self.cloud_driver._source_ranges(sgr1), ['1.2.3.4'])
         self.assertEquals(self.cloud_driver._source_ranges(sgr2), None)
 
-
     def test_cluster_data(self):
         collection = cloud_models.Collection()
 
