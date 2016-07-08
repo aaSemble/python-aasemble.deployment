@@ -396,3 +396,13 @@ class AWSDriverTests(unittest.TestCase):
                                  networks=[],
                                  script='foobar')
         self.assertEqual(self.cloud_driver._block_device_mappings(node), {'DeviceName': '/dev/sda1', 'Ebs.VolumeSize': 37})
+
+    def test_cluster_data(self):
+        collection = cloud_models.Collection()
+
+        collection.urls.append(cloud_models.URLConfStatic(hostname='example.com', path='/foo/bar', local_path='/data'))
+        collection.urls.append(cloud_models.URLConfBackend(hostname='example.com', path='/foo/bar', destination='somebackend/somepath'))
+        self.assertEqual(self.cloud_driver.cluster_data(collection),
+                         {'proxyconf': {'backends': ['somebackend'],
+                                        'domains': {'example.com': {'/foo/bar': {'destination': 'somebackend/somepath',
+                                                                                 'type': 'backend'}}}}})
