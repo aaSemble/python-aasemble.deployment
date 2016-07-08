@@ -1,6 +1,7 @@
 import json
 import logging
 
+from libcloud.common.google import ResourceExistsError
 from libcloud.compute.types import Provider
 
 from aasemble.deployment.cloud.base import CloudDriver
@@ -95,6 +96,7 @@ class GCEDriver(CloudDriver):
                                                                          from_port=from_port,
                                                                          to_port=to_port,
                                                                          protocol=protocol)
+                    security_group_rule.private = firewall
                     LOG.info('Detected security group rule for security group %s: %s: %d-%d' % (tag, protocol, from_port, to_port))
                     security_group_rule_set.add(security_group_rule)
 
@@ -149,12 +151,20 @@ class GCEDriver(CloudDriver):
 
             kwargs['ex_metadata'] = {'items': md_items}
 
+        print(kwargs)
         node.private = self.connection.create_node(**kwargs)
 
         LOG.info('Launced node: %s' % (node.name))
 
     def create_security_group(self, security_group):
         pass
+
+    def delete_security_group_rule(self, security_group_rule):
+        LOG.info('Deleting firewall rule:%s' % (security_group_rule.private.name))
+        try:
+            self.connection.ex_destroy_firewall(security_group_rule.private)
+        except Exception as e:
+            print(e)
 
     def create_security_group_rule(self, security_group_rule):
         name = '%s-%s-%s-%s' % (security_group_rule.security_group.name,
@@ -173,7 +183,10 @@ class GCEDriver(CloudDriver):
         else:
             kwargs['source_ranges'] = self._source_ranges(security_group_rule)
 
-        self.connection.ex_create_firewall(**kwargs)
+        try:
+            self.connection.ex_create_firewall(**kwargs)
+        except ResourceExistsError:
+            pass
 
     def _disk_struct(self, node):
         return [{'boot': True,
@@ -212,3 +225,26 @@ class GCEDriver(CloudDriver):
         if self.ssh_key_file:
             with open(self.expand_path(self.ssh_key_file), 'r') as fp:
                 return self._format_ssh_metadata(self.username, fp.read().rstrip())
+
+    def cluster_data(self, collection):
+        data = {}
+        proxyconf = {}
+        domains = {}
+        backends = set()
+
+        if collection.original_collection:
+            collection = collection.original_collection
+
+        for url in collection.urls:
+            if url.hostname not in domains:
+                domains[url.hostname] = {}
+
+            if type(url) == cloud_models.URLConfBackend:
+                domains[url.hostname][url.path] = {'type': 'backend',
+                                                   'destination': url.destination}
+                backends.add(url.destination.split('/')[0])
+
+        proxyconf['domains'] = domains
+        proxyconf['backends'] = list(backends)
+        data['proxyconf'] = proxyconf
+        return data
