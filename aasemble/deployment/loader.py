@@ -17,6 +17,8 @@ def load(fpath, substitutions=None):
     for node in build_nodes(data, substitutions):
         collection.nodes.add(node)
 
+    collection.containers = data.get('containers', [])
+
     security_groups, security_group_rules = build_security_groups_and_rules(data)
 
     for security_group in security_groups:

@@ -126,5 +126,14 @@ class CloudDriver(object):
     def cluster_json(self, collection):
         return json.dumps(self.cluster_data(collection))
 
+    def default_containers(self, collection):
+        return []
+
     def cluster_data(self, collection):
-        return None  # pragma: nocover
+        collection = collection.original_collection or collection
+
+        data = {}
+        data['containers'] = self.default_containers(collection)
+        data['containers'] += collection.containers
+
+        return data  # pragma: nocover

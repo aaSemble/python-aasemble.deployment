@@ -239,7 +239,12 @@ class DigitalOceanDriverTests(unittest.TestCase):
         collection.urls.append(cloud_models.URLConfBackend(hostname='example.com', path='/foo/bar', destination='somebackend/somepath'))
         self.maxDiff = None
         self.assertEqual(self.cloud_driver.cluster_data(collection),
-                         {'proxyconf': {'backends': ['somebackend'],
+                         {'containers': [{'host_network': True,
+                                          'image': 'aasemble/fwmanager',
+                                          'name': 'fwmanager',
+                                          'nodes': '.*',
+                                          'privileged': True}],
+                          'proxyconf': {'backends': ['somebackend'],
                                         'domains': {'example.com': {'/foo/bar': {'destination': 'somebackend/somepath',
                                                                                  'type': 'backend'}}}},
                           'fwconf': {'security_groups': {'backend': {'nodes': ['web1', 'web2'],
