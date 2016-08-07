@@ -78,7 +78,9 @@ class UtilsTests(unittest.TestCase):
         self.assertEquals(utils.interpolate('Hello, ${who:-someone}!', {}), 'Hello, someone!')
 
     def test_interpolate_replaces_variable_with_a_default_with_that_replacement(self):
-        self.assertEquals(utils.interpolate('Hello, ${who:-someone}!', {'who': 'world'}), 'Hello, world!')
+        self.assertEquals(utils.interpolate('Hello, ${who:-someone}! How are ${pronoun}?',
+                                            {'who': 'world', 'pronoun': 'you'}),
+                          'Hello, world! How are you?')
 
     def test_interpolate_returns_None_when_s_is_None(self):
         self.assertEqual(utils.interpolate(None, {'who': 'world'}), None)
