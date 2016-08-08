@@ -159,7 +159,7 @@ class DigitalOceanDriver(CloudDriver):
 
         for sg in fwconf['security_groups']:
             fwconf['security_groups'][sg]['nodes'].sort()
-            fwconf['security_groups'][sg]['rules'].sort()
+            fwconf['security_groups'][sg]['rules'].sort(key=str)
 
         proxyconf['domains'] = domains
         proxyconf['backends'] = list(backends)
