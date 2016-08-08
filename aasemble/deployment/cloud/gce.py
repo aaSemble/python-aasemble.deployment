@@ -4,8 +4,8 @@ import logging
 from libcloud.common.google import ResourceExistsError
 from libcloud.compute.types import Provider
 
-from aasemble.deployment.cloud.base import CloudDriver
 import aasemble.deployment.cloud.models as cloud_models
+from aasemble.deployment.cloud.base import CloudDriver
 
 LOG = logging.getLogger(__name__)
 

@@ -3,8 +3,8 @@ import logging
 from libcloud.compute.types import Provider
 from libcloud.utils.publickey import get_pubkey_openssh_fingerprint
 
-from aasemble.deployment.cloud.base import CloudDriver
 import aasemble.deployment.cloud.models as cloud_models
+from aasemble.deployment.cloud.base import CloudDriver
 
 LOG = logging.getLogger(__name__)
 

@@ -55,7 +55,7 @@ def parse_time(time_string):
 
 
 class TemplateWithDefaults(string.Template):
-    idpattern = '[_a-z][_a-z0-9]*(:-.*)?'
+    idpattern = '[_a-z][_a-z0-9]*(:-[^}]*)?'
 
 
 class defaultdict(dict):
