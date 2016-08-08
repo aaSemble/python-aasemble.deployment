@@ -182,7 +182,7 @@ class AWSDriver(CloudDriver):
         return {'DeviceName': '/dev/sda1', 'Ebs.VolumeSize': node.disk}
 
     def cluster_data(self, collection):
-        data = {}
+        data = super(AWSDriver, self).cluster_data(collection)
         proxyconf = {}
         domains = {}
         backends = set()

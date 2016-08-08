@@ -36,11 +36,12 @@ class NamedSet(dict):
 
 
 class Collection(object):
-    def __init__(self, nodes=None, security_groups=None, security_group_rules=None, urls=None):
+    def __init__(self, nodes=None, security_groups=None, security_group_rules=None, urls=None, containers=None):
         self.nodes = nodes or NamedSet()
         self.security_groups = security_groups or NamedSet()
         self.security_group_rules = security_group_rules or set()
         self.urls = urls or []
+        self.containers = containers or []
         self.original_collection = None
 
     def __sub__(self, other):
@@ -49,6 +50,7 @@ class Collection(object):
         diff.security_groups = self.security_groups - other.security_groups
         diff.security_group_rules = self.security_group_rules - other.security_group_rules
         diff.urls = self.urls
+        diff.containers = self.containers
         diff.original_collection = self
         return diff
 

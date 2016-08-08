@@ -107,8 +107,15 @@ class DigitalOceanDriver(CloudDriver):
     def get_fingerprint(self, pubkey):
         return get_pubkey_openssh_fingerprint(pubkey)
 
+    def default_containers(self, collection):
+        return [{'image': 'aasemble/fwmanager',
+                 'name': 'fwmanager',
+                 'privileged': True,
+                 'host_network': True,
+                 'nodes': '.*'}]
+
     def cluster_data(self, collection):
-        data = {}
+        data = super(DigitalOceanDriver, self).cluster_data(collection)
         proxyconf = {}
         fwconf = {'security_groups': {}}
         domains = {}

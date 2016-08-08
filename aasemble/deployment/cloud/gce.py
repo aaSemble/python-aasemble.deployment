@@ -231,7 +231,7 @@ class GCEDriver(CloudDriver):
                 return self._format_ssh_metadata(self.username, fp.read().rstrip())
 
     def cluster_data(self, collection):
-        data = {}
+        data = super(GCEDriver, self).cluster_data(collection)
         proxyconf = {}
         domains = {}
         backends = set()
