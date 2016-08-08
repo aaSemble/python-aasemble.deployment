@@ -58,7 +58,6 @@ class TemplateWithDefaults(string.Template):
     idpattern = '[_a-z][_a-z0-9]*(:-[^}]*)?'
 
 
-
 class defaultdict(dict):
     def __init__(self, default=None, *args):
         self.default = default
