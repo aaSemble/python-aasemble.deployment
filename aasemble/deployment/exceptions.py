@@ -44,3 +44,7 @@ class ProvisionFailedException(AasembleDeploymentException):
 
 class ProvisionTimedOutException(AasembleDeploymentException):
     pass
+
+
+class ImageNotFoundException(AasembleDeploymentException):
+    pass
