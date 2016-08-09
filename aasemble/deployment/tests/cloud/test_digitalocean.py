@@ -7,6 +7,7 @@ from six.moves import configparser
 
 import aasemble.deployment.cloud.digitalocean as digitalocean
 import aasemble.deployment.cloud.models as cloud_models
+import aasemble.deployment.exceptions as exceptions
 
 
 test_api_key = 'kht3hkl34kjl5h25lkjh33'
@@ -92,10 +93,33 @@ class DigitalOceanDriverTests(unittest.TestCase):
     @mock.patch('aasemble.deployment.cloud.digitalocean.DigitalOceanDriver.connection')
     @mock.patch('aasemble.deployment.cloud.digitalocean.DigitalOceanDriver.apply_mappings')
     def test_get_image(self, apply_mappings, connection):
+        apply_mappings.return_value.startswith.return_value = False
         self.assertEqual(self.cloud_driver._get_image('trusty'),
                          connection.get_image.return_value)
         apply_mappings.assert_called_with('images', 'trusty')
         connection.get_image.assert_called_with(apply_mappings.return_value)
+
+    @mock.patch('aasemble.deployment.cloud.digitalocean.DigitalOceanDriver._get_image_by_spec')
+    @mock.patch('aasemble.deployment.cloud.digitalocean.DigitalOceanDriver.apply_mappings')
+    def test_get_image_calls_get_by_spec(self, apply_mappings, _get_image_by_spec):
+        apply_mappings.return_value = 'spec:foo:bar'
+        self.assertEqual(self.cloud_driver._get_image('trusty'),
+                         _get_image_by_spec.return_value)
+        apply_mappings.assert_called_with('images', 'trusty')
+        _get_image_by_spec.assert_called_with('foo:bar')
+
+    @mock.patch('aasemble.deployment.cloud.digitalocean.DigitalOceanDriver.connection')
+    @mock.patch('aasemble.deployment.cloud.digitalocean.DigitalOceanDriver.get_name_by_image')
+    @mock.patch('aasemble.deployment.cloud.digitalocean.DigitalOceanDriver.get_distribution_by_image')
+    @mock.patch('aasemble.deployment.cloud.digitalocean.DigitalOceanDriver.apply_mappings')
+    def test_get_image_by_spec(self, apply_mappings, get_distribution_by_image, get_name_by_image, connection):
+        get_distribution_by_image.side_effect = lambda s: s.split(':')[0]
+        get_name_by_image.side_effect = lambda s: s.split(':')[1]
+
+        connection.list_images.return_value = ['Ubuntu:1404', 'Ubuntu:1604']
+        self.assertEqual(self.cloud_driver._get_image_by_spec('distribution:Ubuntu name:1404'), 'Ubuntu:1404')
+        self.assertEqual(self.cloud_driver._get_image_by_spec('distribution:Ubuntu name:1604'), 'Ubuntu:1604')
+        self.assertRaises(exceptions.ImageNotFoundException, self.cloud_driver._get_image_by_spec, 'distribution:foo name:1604')
 
     @mock.patch('aasemble.deployment.cloud.digitalocean.DigitalOceanDriver.apply_mappings')
     @mock.patch('aasemble.deployment.cloud.digitalocean.DigitalOceanDriver.get_size')

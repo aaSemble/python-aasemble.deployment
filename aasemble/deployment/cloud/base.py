@@ -1,6 +1,8 @@
 import json
 import logging
 import os.path
+import re
+import shlex
 import threading
 from multiprocessing.pool import ThreadPool
 
@@ -137,3 +139,21 @@ class CloudDriver(object):
         data['containers'] += collection.containers
 
         return data  # pragma: nocover
+
+    def get_matcher_factory(self, **kwargs):
+        def get_matcher(imagespec):
+            rules = shlex.split(imagespec, ' ')
+            matchers = []
+
+            def build_matcher(regex, f):
+                def matcher(image):
+                    return bool(re.compile(regex).match(f(image)))
+                return matcher
+
+            for rule in rules:
+                key, value = rule.split(':', 1)
+                if key in kwargs:
+                    matchers += [build_matcher(value, kwargs[key])]
+
+            return lambda i: all(map(lambda f: f(i), matchers))
+        return get_matcher

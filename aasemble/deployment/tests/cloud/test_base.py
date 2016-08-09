@@ -290,3 +290,27 @@ class CloudDriverTests(unittest.TestCase):
                                        to_port=443,
                                        protocol='tcp')
         base.CloudDriver().delete_security_group_rule(sgr)
+
+    def test_get_matcher(self):
+        class TestDriver(base.CloudDriver):
+            def get_name_by_image(self, image):
+                return image.split(':')[1]
+
+            def get_distribution_by_image(self, image):
+                return image.split(':')[0]
+
+        driver = TestDriver()
+
+        matcher_factory = driver.get_matcher_factory(name=driver.get_name_by_image,
+                                                     distribution=driver.get_distribution_by_image)
+        matcher = matcher_factory('distribution:Ubuntu')
+
+        self.assertTrue(matcher('Ubuntu:abcde'))
+        self.assertFalse(matcher('whatever:Ubuntu'))
+        self.assertTrue(matcher('Ubuntu:abcde'))
+
+        matcher = matcher_factory('distribution:Ubuntu name:"14\.04\..*\ x64"')
+
+        self.assertTrue(matcher('Ubuntu:14.04.05 x64'))
+        self.assertFalse(matcher('Ubuntu:14.04 x64'))
+        self.assertFalse(matcher('Fedora:14.04.05 x64'))

@@ -4,6 +4,7 @@ from libcloud.compute.types import Provider
 from libcloud.utils.publickey import get_pubkey_openssh_fingerprint
 
 import aasemble.deployment.cloud.models as cloud_models
+import aasemble.deployment.exceptions as exceptions
 from aasemble.deployment.cloud.base import CloudDriver
 
 LOG = logging.getLogger(__name__)
@@ -59,8 +60,30 @@ class DigitalOceanDriver(CloudDriver):
     def detect_firewalls(self):
         return set(), set()
 
+    def get_distribution_by_image(self, image):
+        return image.extra['distribution']
+
+    def get_name_by_image(self, image):
+        return image.name
+
+    def _get_image_by_spec(self, spec):
+        matcher_factory = self.get_matcher_factory(distribution=self.get_distribution_by_image,
+                                                   name=self.get_name_by_image)
+        matcher = matcher_factory(spec)
+
+        for image in self.connection.list_images():
+            if matcher(image):
+                return image
+
+        raise exceptions.ImageNotFoundException(spec)
+
     def _get_image(self, image):
-        return self.connection.get_image(self.apply_mappings('images', image))
+        mapped_image = self.apply_mappings('images', image)
+
+        if mapped_image.startswith('spec:'):
+            return self._get_image_by_spec(mapped_image[5:])
+
+        return self.connection.get_image(mapped_image)
 
     def _get_size(self, flavor):
         return self.get_size(self.apply_mappings('flavors', flavor))
@@ -112,6 +135,7 @@ class DigitalOceanDriver(CloudDriver):
                  'name': 'fwmanager',
                  'privileged': True,
                  'host_network': True,
+                 'privileged': True,
                  'nodes': '.*'}]
 
     def cluster_data(self, collection):
