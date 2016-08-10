@@ -89,10 +89,10 @@ class CliTestCase(unittest.TestCase):
 
     @mock.patch('aasemble.deployment.cli.detect')
     def test_main_calls_detect(self, detect):
-        aasemble.deployment.cli.main(['detect', 'cloud.ini'])
+        aasemble.deployment.cli.main(['detect'])
         self.assertEqual(len(detect.call_args_list), 1)
         options = detect.call_args_list[0][0][0]
-        self.assertEqual(options.cloud, 'cloud.ini')
+        self.assertEqual(options.cloud, 'default')
 
     def test_extract_substitutions(self):
         extract_substitutions = aasemble.deployment.cli.extract_substitutions

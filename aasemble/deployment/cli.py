@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import os.path
 import sys
 
 from multiprocessing.pool import ThreadPool
@@ -42,6 +43,10 @@ def handle_cluster_opts(options, substitutions):
     return cluster
 
 
+def cloud_config_path(name):
+    return os.path.expanduser('~/.aasemble/{name}.ini'.format(name=name))
+
+
 def apply(options):
     substitutions = extract_substitutions(options.substitutions)
 
@@ -49,7 +54,7 @@ def apply(options):
     LOG.info('Cluster ID: %s', cluster)
 
     resources = loader.load(options.stack, substitutions)
-    cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(options.cloud)
+    cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(cloud_config_path(options.cloud))
     pool = ThreadPool(options.threads)
     cloud_driver = cloud_driver_class(mappings=mappings,
                                       pool=pool,
@@ -66,7 +71,7 @@ def apply(options):
 
 
 def detect(options):
-    cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(options.cloud)
+    cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(cloud_config_path(options.cloud))
     pool = ThreadPool(options.threads)
     cloud_driver = cloud_driver_class(mappings=mappings,
                                       pool=pool,
@@ -107,13 +112,13 @@ def main(args=sys.argv[1:]):
     cluster_group.add_argument('--new-cluster', action='store_true', help='Create new cluster')
     cluster_group.add_argument('--cluster', help='Use existing cluster')
 
-    apply_parser.add_argument('stack', help='Stack description (yaml format)')
-    apply_parser.add_argument('cloud', help='Cloud config')
+    apply_parser.add_argument('--stack', default='.aasemble.yaml', help='Stack description (yaml format) [default=.aasemble.yaml]')
+    apply_parser.add_argument('--cloud', default='default', help='Cloud config')
     apply_parser.add_argument('substitutions', nargs='*', help='Substitutions (e.g. "foo=bar")', metavar='SUBST')
 
     detect_parser = subparsers.add_parser('detect', help='Detect current resources')
     detect_parser.set_defaults(func=detect)
-    detect_parser.add_argument('cloud', help='Cloud config')
+    detect_parser.add_argument('--cloud', default='default', help='Cloud config')
     detect_parser.add_argument('--namespace', help='Namespace for resources')
     detect_parser.add_argument('--json', action='store_true', help='Output as JSON')
 
