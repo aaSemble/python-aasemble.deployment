@@ -99,7 +99,8 @@ def main(args=sys.argv[1:]):
     parser.add_argument('--threads', type=int, default=DEFAULT_THREADS,
                         help='Number of threads [default={}]'.format(DEFAULT_THREADS))
 
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)-15s %(message)s')
+    parser.add_argument('--debug', action='store_const', const=logging.DEBUG,
+                        dest='loglevel', default=logging.INFO, help='Enable debugging')
 
     subparsers = parser.add_subparsers(help='Subcommand help', dest='subcmd')
     subparsers.required = True
@@ -128,6 +129,8 @@ def main(args=sys.argv[1:]):
     clean_parser.add_argument('--namespace', help='Namespace for resources')
 
     options = parser.parse_args(args)
+    logging.basicConfig(level=options.loglevel, format='%(asctime)-15s %(message)s')
+
     options.func(options)
 
 
