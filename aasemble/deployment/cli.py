@@ -1,6 +1,7 @@
 import argparse
 import json
 import logging
+import os.path
 import sys
 
 from multiprocessing.pool import ThreadPool
@@ -26,7 +27,7 @@ def extract_substitutions(substargs):
 def format_collection(collection):
     out = 'Nodes:\n'
     for node in collection.nodes:
-        out += '  %s: %s\n' % (node.name, node.private.public_ips)
+        out += '  %s: %s\n' % (node.name, ' '.join(node.private.public_ips))
     return out
 
 
@@ -42,6 +43,10 @@ def handle_cluster_opts(options, substitutions):
     return cluster
 
 
+def cloud_config_path(name):
+    return os.path.expanduser('~/.aasemble/{name}.ini'.format(name=name))
+
+
 def apply(options):
     substitutions = extract_substitutions(options.substitutions)
 
@@ -49,7 +54,7 @@ def apply(options):
     LOG.info('Cluster ID: %s', cluster)
 
     resources = loader.load(options.stack, substitutions)
-    cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(options.cloud)
+    cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(cloud_config_path(options.cloud))
     pool = ThreadPool(options.threads)
     cloud_driver = cloud_driver_class(mappings=mappings,
                                       pool=pool,
@@ -63,28 +68,31 @@ def apply(options):
 
     cloud_driver.apply_resources(resources)
     print(format_collection(resources))
+    print('Cluster ID: {}'.format(cluster))
 
 
-def detect(options):
-    cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(options.cloud)
+def _detect(options, noprint=True):
+    cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(cloud_config_path(options.cloud))
     pool = ThreadPool(options.threads)
     cloud_driver = cloud_driver_class(mappings=mappings,
                                       pool=pool,
                                       namespace=options.namespace,
                                       **cloud_driver_kwargs)
 
-    resources = cloud_driver.detect_resources()
+    return cloud_driver, cloud_driver.detect_resources()
+
+
+def detect(options, noprint=True):
+    _, resources = _detect(options)
 
     if getattr(options, 'json', False):
         print(json.dumps(resources.as_dict()))
     else:
         print(format_collection(resources))
 
-    return cloud_driver, resources
-
 
 def clean(options):
-    cloud_driver, resources = detect(options)
+    cloud_driver, resources = _detect(options)
     cloud_driver.clean_resources(resources)
 
 
@@ -94,7 +102,10 @@ def main(args=sys.argv[1:]):
     parser.add_argument('--threads', type=int, default=DEFAULT_THREADS,
                         help='Number of threads [default={}]'.format(DEFAULT_THREADS))
 
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)-15s %(message)s')
+    parser.add_argument('--debug', '-d', action='store_const', const=logging.DEBUG,
+                        dest='loglevel', default=logging.INFO, help='Enable debugging')
+    parser.add_argument('--quiet', '-q', action='store_const', const=logging.ERROR,
+                        dest='loglevel', help='Be quiet')
 
     subparsers = parser.add_subparsers(help='Subcommand help', dest='subcmd')
     subparsers.required = True
@@ -107,13 +118,13 @@ def main(args=sys.argv[1:]):
     cluster_group.add_argument('--new-cluster', action='store_true', help='Create new cluster')
     cluster_group.add_argument('--cluster', help='Use existing cluster')
 
-    apply_parser.add_argument('stack', help='Stack description (yaml format)')
-    apply_parser.add_argument('cloud', help='Cloud config')
+    apply_parser.add_argument('--stack', default='.aasemble.yaml', help='Stack description (yaml format) [default=.aasemble.yaml]')
+    apply_parser.add_argument('--cloud', default='default', help='Cloud config')
     apply_parser.add_argument('substitutions', nargs='*', help='Substitutions (e.g. "foo=bar")', metavar='SUBST')
 
     detect_parser = subparsers.add_parser('detect', help='Detect current resources')
     detect_parser.set_defaults(func=detect)
-    detect_parser.add_argument('cloud', help='Cloud config')
+    detect_parser.add_argument('--cloud', default='default', help='Cloud config')
     detect_parser.add_argument('--namespace', help='Namespace for resources')
     detect_parser.add_argument('--json', action='store_true', help='Output as JSON')
 
@@ -123,6 +134,8 @@ def main(args=sys.argv[1:]):
     clean_parser.add_argument('--namespace', help='Namespace for resources')
 
     options = parser.parse_args(args)
+    logging.basicConfig(level=options.loglevel, format='%(asctime)-15s %(message)s')
+
     options.func(options)
 
 

@@ -20,7 +20,7 @@ class ParserTestCase(unittest.TestCase):
         self.assertEqual(len(collection.nodes), 1)
         self.assertEqual(len(collection.security_groups), 0)
         self.assertEqual(len(collection.security_group_rules), 0)
-        log.check(('aasemble.deployment.loader', 'INFO', 'Loaded node webapp from stack'))
+        log.check(('aasemble.deployment.loader', 'DEBUG', 'Loaded node webapp from stack'))
 
     @log_capture()
     def test_plurality(self, log):
@@ -30,8 +30,8 @@ class ParserTestCase(unittest.TestCase):
         self.assertEqual(len(collection.nodes), 2)
         self.assertEqual(len(collection.security_groups), 0)
         self.assertEqual(len(collection.security_group_rules), 0)
-        log.check(('aasemble.deployment.loader', 'INFO', 'Loaded node webapp1 from stack'),
-                  ('aasemble.deployment.loader', 'INFO', 'Loaded node webapp2 from stack'))
+        log.check(('aasemble.deployment.loader', 'DEBUG', 'Loaded node webapp1 from stack'),
+                  ('aasemble.deployment.loader', 'DEBUG', 'Loaded node webapp2 from stack'))
 
     @log_capture()
     def test_with_security_groups(self, log):
@@ -46,10 +46,10 @@ class ParserTestCase(unittest.TestCase):
         self.assertEqual(len(collection.nodes), 2)
         self.assertEqual(len(collection.security_groups), 1)
         self.assertEqual(len(collection.security_group_rules), 1)
-        log.check(('aasemble.deployment.loader', 'INFO', 'Loaded node webapp1 from stack'),
-                  ('aasemble.deployment.loader', 'INFO', 'Loaded node webapp2 from stack'),
-                  ('aasemble.deployment.loader', 'INFO', 'Loaded security group webapp from stack'),
-                  ('aasemble.deployment.loader', 'INFO', 'Loaded security group rule from stack: tcp: 443-443'))
+        log.check(('aasemble.deployment.loader', 'DEBUG', 'Loaded node webapp1 from stack'),
+                  ('aasemble.deployment.loader', 'DEBUG', 'Loaded node webapp2 from stack'),
+                  ('aasemble.deployment.loader', 'DEBUG', 'Loaded security group webapp from stack'),
+                  ('aasemble.deployment.loader', 'DEBUG', 'Loaded security group rule from stack: tcp: 443-443'))
 
     @mock.patch('aasemble.deployment.loader.interpolate')
     @log_capture()
@@ -68,10 +68,10 @@ class ParserTestCase(unittest.TestCase):
         self.assertEqual(len(collection.nodes), 2)
         self.assertEqual(len(collection.security_groups), 1)
         self.assertEqual(len(collection.security_group_rules), 1)
-        log.check(('aasemble.deployment.loader', 'INFO', 'Loaded node webapp1 from stack'),
-                  ('aasemble.deployment.loader', 'INFO', 'Loaded node webapp2 from stack'),
-                  ('aasemble.deployment.loader', 'INFO', 'Loaded security group webapp from stack'),
-                  ('aasemble.deployment.loader', 'INFO', 'Loaded security group rule from stack: tcp: 443-443'))
+        log.check(('aasemble.deployment.loader', 'DEBUG', 'Loaded node webapp1 from stack'),
+                  ('aasemble.deployment.loader', 'DEBUG', 'Loaded node webapp2 from stack'),
+                  ('aasemble.deployment.loader', 'DEBUG', 'Loaded security group webapp from stack'),
+                  ('aasemble.deployment.loader', 'DEBUG', 'Loaded security group rule from stack: tcp: 443-443'))
 
     @log_capture()
     def test_with_urls(self, log):
@@ -85,6 +85,6 @@ class ParserTestCase(unittest.TestCase):
 
         self.assertEqual(len(collection.nodes), 1)
         self.assertEqual(len(collection.urls), 2)
-        log.check(('aasemble.deployment.loader', 'INFO', 'Loaded static URL ${domain}/ from stack'),
-                  ('aasemble.deployment.loader', 'INFO', 'Loaded backend URL ${domain}/api from stack'),
-                  ('aasemble.deployment.loader', 'INFO', 'Loaded node webapp from stack'))
+        log.check(('aasemble.deployment.loader', 'DEBUG', 'Loaded static URL ${domain}/ from stack'),
+                  ('aasemble.deployment.loader', 'DEBUG', 'Loaded backend URL ${domain}/api from stack'),
+                  ('aasemble.deployment.loader', 'DEBUG', 'Loaded node webapp from stack'))

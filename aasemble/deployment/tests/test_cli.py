@@ -89,10 +89,10 @@ class CliTestCase(unittest.TestCase):
 
     @mock.patch('aasemble.deployment.cli.detect')
     def test_main_calls_detect(self, detect):
-        aasemble.deployment.cli.main(['detect', 'cloud.ini'])
+        aasemble.deployment.cli.main(['detect'])
         self.assertEqual(len(detect.call_args_list), 1)
         options = detect.call_args_list[0][0][0]
-        self.assertEqual(options.cloud, 'cloud.ini')
+        self.assertEqual(options.cloud, 'default')
 
     def test_extract_substitutions(self):
         extract_substitutions = aasemble.deployment.cli.extract_substitutions
@@ -112,7 +112,7 @@ class CliTestCase(unittest.TestCase):
         collection.nodes.add(cloud_models.Node(name='testnode', flavor='n1-standard-1',
                                                image='someimage', networks=[], disk=10,
                                                private=GCENode('10.0.0.1')))
-        self.assertEquals(aasemble.deployment.cli.format_collection(collection), "Nodes:\n  testnode: ['10.0.0.1']\n")
+        self.assertEquals(aasemble.deployment.cli.format_collection(collection), "Nodes:\n  testnode: 10.0.0.1\n")
 
     def test_handle_cluster_opts_no_args(self):
         options = mock.MagicMock()

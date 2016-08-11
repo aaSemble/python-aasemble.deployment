@@ -85,7 +85,7 @@ Let's take it for a spin, shall we?
 For this demo, we're assuming you're using Google Compute Engine. Create
 a new project for this and download a JSON file with the credentials.
 
-Create a gce.ini with the following contents:
+Create a ~/.aasemble/gce.ini with the following contents:
 
     [connection]
     driver = gce
@@ -103,6 +103,6 @@ Create a gce.ini with the following contents:
 
 We pass the cluster ID into the deployment tool:
 
-    $ aasemble apply --new-cluster gce.ini examples/simple/resources.yaml
+    $ aasemble apply --new-cluster --cloud gce --stack examples/simple/resources.yaml
 
 ...and you sit back and watch the magic happen.

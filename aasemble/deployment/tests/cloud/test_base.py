@@ -34,7 +34,7 @@ class CloudDriverTests(unittest.TestCase):
 
         get_driver.assert_called_with(mock.sentinel.provider)
         get_driver(mock.sentinel.provider).assert_called_with(1, 2, foo='bar')
-        log.check(('aasemble.deployment.cloud.base', 'INFO', 'Connecting to Test Cloud'))
+        log.check(('aasemble.deployment.cloud.base', 'DEBUG', 'Connecting to Test Cloud'))
 
     def test_detect_resources(self):
         node1 = models.Node(name='node1',

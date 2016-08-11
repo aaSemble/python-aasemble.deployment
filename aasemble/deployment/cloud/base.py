@@ -30,7 +30,7 @@ class CloudDriver(object):
         if not hasattr(self.locals, '_connection'):
             driver = get_driver(self.provider)
             driver_args, driver_kwargs = self._get_driver_args_and_kwargs()
-            LOG.info('Connecting to {}'.format(self.name))
+            LOG.debug('Connecting to {}'.format(self.name))
             self.locals._connection = driver(*driver_args, **driver_kwargs)
 
         return self.locals._connection
