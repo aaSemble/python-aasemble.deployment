@@ -68,6 +68,7 @@ def apply(options):
 
     cloud_driver.apply_resources(resources)
     print(format_collection(resources))
+    print('Cluster ID: {}'.format(cluster))
 
 
 def _detect(options, noprint=True):
