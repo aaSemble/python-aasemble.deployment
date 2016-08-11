@@ -27,7 +27,7 @@ def extract_substitutions(substargs):
 def format_collection(collection):
     out = 'Nodes:\n'
     for node in collection.nodes:
-        out += '  %s: %s\n' % (node.name, node.private.public_ips)
+        out += '  %s: %s\n' % (node.name, ' '.join(node.private.public_ips))
     return out
 
 
