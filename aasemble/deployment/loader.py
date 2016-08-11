@@ -38,12 +38,12 @@ def build_urls(data, substitutions=None):
             urls.append(cloud_models.URLConfStatic(hostname=interpolate(url['hostname'], substitutions),
                                                    path=url['path'],
                                                    local_path=url['local_path']))
-            LOG.info('Loaded static URL %s%s from stack' % (url['hostname'], url['path']))
+            LOG.debug('Loaded static URL %s%s from stack' % (url['hostname'], url['path']))
         elif url['type'] == 'backend':
             urls.append(cloud_models.URLConfBackend(hostname=interpolate(url['hostname'], substitutions),
                                                     path=url['path'],
                                                     destination=url['destination']))
-            LOG.info('Loaded backend URL %s%s from stack' % (url['hostname'], url['path']))
+            LOG.debug('Loaded backend URL %s%s from stack' % (url['hostname'], url['path']))
         else:
             raise UnknownURLType(url['type'])
 
@@ -60,7 +60,7 @@ def build_nodes(data, substitutions=None):
             names = [name]
 
         for name in names:
-            LOG.info('Loaded node %s from stack' % name)
+            LOG.debug('Loaded node %s from stack' % name)
             node = cloud_models.Node(name=name,
                                      flavor=node_info['flavor'],
                                      image=node_info['image'],
@@ -76,12 +76,12 @@ def build_security_groups_and_rules(data):
     security_groups = set()
     security_group_rules = set()
     for name in data.get('security_groups', {}):
-        LOG.info('Loaded security group %s from stack' % name)
+        LOG.debug('Loaded security group %s from stack' % name)
         security_group_info = data['security_groups'][name]
         security_group = cloud_models.SecurityGroup(name=name)
         security_groups.add(security_group)
         for rule in security_group_info:
-            LOG.info('Loaded security group rule from stack: %s: %d-%d' % (rule['protocol'], rule['from_port'], rule['to_port']))
+            LOG.debug('Loaded security group rule from stack: %s: %d-%d' % (rule['protocol'], rule['from_port'], rule['to_port']))
             kwargs = {'security_group': security_group,
                       'from_port': rule['from_port'],
                       'to_port': rule['to_port'],

@@ -102,8 +102,10 @@ def main(args=sys.argv[1:]):
     parser.add_argument('--threads', type=int, default=DEFAULT_THREADS,
                         help='Number of threads [default={}]'.format(DEFAULT_THREADS))
 
-    parser.add_argument('--debug', action='store_const', const=logging.DEBUG,
+    parser.add_argument('--debug', '-d', action='store_const', const=logging.DEBUG,
                         dest='loglevel', default=logging.INFO, help='Enable debugging')
+    parser.add_argument('--quiet', '-q', action='store_const', const=logging.ERROR,
+                        dest='loglevel', help='Be quiet')
 
     subparsers = parser.add_subparsers(help='Subcommand help', dest='subcmd')
     subparsers.required = True
