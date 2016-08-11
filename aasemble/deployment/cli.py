@@ -70,7 +70,7 @@ def apply(options):
     print(format_collection(resources))
 
 
-def detect(options):
+def _detect(options, noprint=True):
     cloud_driver_class, cloud_driver_kwargs, mappings = load_cloud_config(cloud_config_path(options.cloud))
     pool = ThreadPool(options.threads)
     cloud_driver = cloud_driver_class(mappings=mappings,
@@ -78,18 +78,20 @@ def detect(options):
                                       namespace=options.namespace,
                                       **cloud_driver_kwargs)
 
-    resources = cloud_driver.detect_resources()
+    return cloud_driver, cloud_driver.detect_resources()
+
+
+def detect(options, noprint=True):
+    _, resources = _detect(options)
 
     if getattr(options, 'json', False):
         print(json.dumps(resources.as_dict()))
     else:
         print(format_collection(resources))
 
-    return cloud_driver, resources
-
 
 def clean(options):
-    cloud_driver, resources = detect(options)
+    cloud_driver, resources = _detect(options)
     cloud_driver.clean_resources(resources)
 
 
