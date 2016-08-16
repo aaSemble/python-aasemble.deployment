@@ -9,7 +9,7 @@ install_dnsmasq() {
 
 install_docker() {
     apt-get install -y screen
-    screen -dm 'curl https://get.docker.com/ | sh'
+    screen -dm bash -c 'curl https://get.docker.com/ | sh'
 }
 
 launch_host_agent() {
