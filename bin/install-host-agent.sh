@@ -1,22 +1,22 @@
 #!/bin/bash
 
-install_dnsmasq() {
-    mkdir -p /etc/dnsmasq.d
-    echo 'server=/consul/127.0.0.1#8600' >> /etc/dnsmasq.d/10-consul
-    apt-get install -y dnsmasq
-    sleep 2
-}
-
 install_docker() {
     apt-get install -y screen
-    screen -dmS dockerinstall bash -c 'curl https://get.docker.com/ | sh'
-    while screen -ls dockerinstall
+    screen -dmS dockerinstall sh -c 'curl https://get.docker.com/ | sh'
+}
+
+install_and_launch_finish_install_script() {
+    cat > /tmp/finish-install.sh <<EOF
+#!/bin/sh -x
+
+exec > /tmp/finish-install.log 2>&1
+
+wait_for_docker() {
+    while ! docker ps
     do
-        echo 'Docker install is still running'
+        echo 'Docker not ready'
         sleep 2
     done
-    # It seems to take a little while before Docker is actually ready to serve requests
-    sleep 5
 }
 
 launch_host_agent() {
@@ -33,6 +33,26 @@ launch_host_agent() {
                ${AASEMBLE_HOST_AGENT:-aasemble/hostagent}
 }
 
+install_dnsmasq() {
+    mkdir -p /etc/dnsmasq.d
+    echo 'server=/consul/127.0.0.1#8600' >> /etc/dnsmasq.d/10-consul
+    apt-get install -y dnsmasq
+    sleep 2
+}
+
+finish_install() {
+    wait_for_docker
+    launch_host_agent
+    install_dnsmasq
+    rm /tmp/finish-install.sh
+}
+
+finish_install
+EOF
+    chmod +x /tmp/finish-install.sh
+    /tmp/finish-install.sh &
+}
+
 do_install() {
     if [ -z "${CLUSTER}" ]
     then
@@ -41,8 +61,7 @@ do_install() {
     fi
 
     install_docker
-    launch_host_agent
-    install_dnsmasq
+    install_and_launch_finish_install_script
 }
 
 # This should prevent only running half the script due to curl->sh pipe dying halfway through
