@@ -15,6 +15,8 @@ install_docker() {
         echo 'Docker install is still running'
         sleep 2
     done
+    # It seems to take a little while before Docker is actually ready to serve requests
+    sleep 5
 }
 
 launch_host_agent() {
