@@ -9,7 +9,12 @@ install_dnsmasq() {
 
 install_docker() {
     apt-get install -y screen
-    screen -dm bash -c 'curl https://get.docker.com/ | sh'
+    screen -dmS dockerinstall bash -c 'curl https://get.docker.com/ | sh'
+    while screen -ls dockerinstall
+    do
+        echo 'Docker install is still running'
+        sleep 2
+    done
 }
 
 launch_host_agent() {
