@@ -268,6 +268,7 @@ class DigitalOceanDriverTests(unittest.TestCase):
                                           'name': 'fwmanager',
                                           'nodes': '.*',
                                           'privileged': True}],
+                          'tasks': [],
                           'proxyconf': {'backends': ['somebackend'],
                                         'domains': {'example.com': {'/foo/bar': {'destination': 'somebackend/somepath',
                                                                                  'type': 'backend'}}}},

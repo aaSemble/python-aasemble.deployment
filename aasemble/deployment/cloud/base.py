@@ -137,6 +137,7 @@ class CloudDriver(object):
         data = {}
         data['containers'] = self.default_containers(collection)
         data['containers'] += collection.containers
+        data['tasks'] = collection.tasks
 
         return data  # pragma: nocover
 
