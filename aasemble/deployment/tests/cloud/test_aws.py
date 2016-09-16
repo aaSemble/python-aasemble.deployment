@@ -404,6 +404,7 @@ class AWSDriverTests(unittest.TestCase):
         collection.urls.append(cloud_models.URLConfBackend(hostname='example.com', path='/foo/bar', destination='somebackend/somepath'))
         self.assertEqual(self.cloud_driver.cluster_data(collection),
                          {'containers': [],
+                          'tasks': [],
                           'proxyconf': {'backends': ['somebackend'],
                                         'domains': {'example.com': {'/foo/bar': {'destination': 'somebackend/somepath',
                                                                                  'type': 'backend'}}}}})
